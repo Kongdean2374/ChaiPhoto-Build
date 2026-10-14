@@ -1,0 +1,71 @@
+name: Build Unsigned IPA
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact public main commit SHA (40 hex characters)
+        required: true
+        type: string
+      build_number:
+        description: Unsigned build number (1-9999; not an Apple build allocation)
+        required: true
+        default: "31"
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: chaiphoto-unsigned-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'Kongdean2374/ChaiPhoto-Build' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
+      RELEASE_FLAVOR: unsigned
+    steps:
+      - name: Checkout exact dispatched public source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Validate public snapshot and input
+        run: |
+          python3 scripts/verify_public_tree.py
+          python3 scripts/resolve_version.py --check-only
+      - name: Install verified toolchain
+        run: bash scripts/install_toolchain.sh
+      - name: Build and verify unsigned device IPA
+        run: bash scripts/build_unsigned.sh
+      - name: Publish unsigned Release directly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to overwrite."
+            exit 1
+          fi
+          INFO="${IPA_PATH%.ipa}.build-info.json"
+          NOTES="$RUNNER_TEMP/unsigned-release-notes.txt"
+          {
+            echo "Unsigned iPhoneOS ARM64 IPA. Supply your own signing; this file cannot be installed directly."
+            echo
+            echo "Source commit: $GITHUB_SHA"
+            echo "Build: $RELEASE_BUILD_NUMBER"
+            echo
+            cat "$INFO"
+          } > "$NOTES"
+          gh release create "$RELEASE_TAG" "$IPA_PATH" "$IPA_PATH.sha256" "$INFO" \
+            --target "$GITHUB_SHA" --title "ChaiPhoto unsigned build $RELEASE_BUILD_NUMBER" \
+            --notes-file "$NOTES"
+          {
+            echo "Unsigned IPA released: $RELEASE_TAG"
+            cat "$INFO"
+          } >> "$GITHUB_STEP_SUMMARY"

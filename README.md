@@ -1,0 +1,104 @@
+# ChaiPhoto Build
+
+Public, independently buildable source snapshot for ChaiPhoto. The private
+development repository remains the authoritative development and history source.
+No private Git history, feedback, credentials or existing build artifacts are included.
+
+The code is available for public inspection. No additional reuse license is granted.
+No MIT/GPL or other open-source license has been added.
+
+## Manual workflows
+
+All delivery workflows accept only this repository's main branch and the exact
+40-character public commit SHA entered as expected_sha. There are no push, PR,
+schedule, tag or workflow_run delivery triggers.
+
+| Workflow | Result | Credentials | Publication |
+|---|---|---|---|
+| Build Unsigned IPA | iPhoneOS ARM64 Beta-flavor IPA | No Apple credentials | Public Release, checksum and build summary |
+| Upload TestFlight | Manual signed upload | testflight environment | Apple only |
+| Upload App Store | Production-flavor signed upload | appstore environment | Apple only |
+
+Unsigned IPA files cannot be installed directly. Downloaders supply their own signing
+and provisioning. Release assets and this source are publicly downloadable.
+
+## Versions
+
+Marketing version remains 1.2.5. Enter an explicit positive build number from 1 to
+9999; this conservative project limit is not a claim about all Apple formats.
+TestFlight uses even numbers; App Store uses odd numbers. Neither Apple workflow
+uses the repository run number. Check the existing Apple build sequence and reserve
+a number before dispatch. The workflows also check Apple metadata before uploading.
+The concurrency lock is shared between the two Apple workflows only within this
+repository. Never deliver from the private and public repositories at the same time.
+Cross-repository Apple fallback remains unverified; private workflow changes require
+separate authorization.
+
+## Apple setup — not configured or executed during initial delivery
+
+Configure testflight and appstore environments with a required maintainer reviewer,
+main-only deployment branches, self-review allowed for the current single maintainer,
+and administrator bypass disabled where supported. Until these controls are verified,
+do not configure signing credentials or run either Apple workflow.
+
+Set these secrets separately in each environment, from your secure original backups:
+
+- APP_STORE_CONNECT_API_KEY_P8
+- BUILD_CERTIFICATE_BASE64
+- P12_PASSWORD
+- PROVISIONING_PROFILE_BASE64
+
+Set APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APPLE_TEAM_ID as
+environment variables (the workflows also accept environment secrets for these IDs).
+These IDs are identifiers, not private keys. Repository-level Apple secrets are not used.
+Secrets are not inherited from the private repository and cannot be recovered through
+the GitHub secret-read API. Do not paste credentials into issues, source or chat.
+
+Use the existing App Store distribution certificate and profile for
+tw.chai2374.ChaiPhoto. The workflow will not create an Apple app, certificate or profile.
+API permissions must permit existing app/build reads and uploads.
+Each GitHub secret must fit its size limit; never commit an encrypted credential
+file as a workaround. Oversized values require a separately reviewed secrets-only setup.
+
+Upload success does not guarantee Apple processing, TestFlight availability,
+App Review approval or production release. Select and release builds in Apple
+through the established authorized process.
+
+Website version synchronization is not deployed in this initial three-workflow
+delivery. After confirming TestFlight availability, update the existing website
+through the established authorized process. No feedback or website token is held here.
+
+## Local build and snapshot updates
+
+Install the approved Xcode and XcodeGen versions listed in build/toolchain.json.
+Set RELEASE_BUILD_NUMBER and RELEASE_FLAVOR=unsigned, run the version resolver,
+then xcodegen generate and build the ChaiPhoto scheme in Release with signing disabled.
+Builds require only this public source and publicly available tooling.
+
+Updates are prepared in a private workspace from an approved immutable source
+commit by selecting exact files, applying reviewed build configuration changes,
+scanning the final candidate and approving its diff before publication.
+Unknown files, symlinks, submodules, LFS pointers and source hash changes fail closed.
+App source changes require renewed source-manifest review; never automatically
+regenerate a manifest to bypass a failed check.
+
+The public workflows verify the file allowlist and generated Xcode sources/resources.
+They do not clone a private repository and contain no private-repository PAT or deploy key.
+External contributions must first be reviewed in the authoritative private development
+process and exported as a newly approved snapshot.
+
+## Cost and privacy
+
+Only standard macos-26 runners are selected. No larger runners, Actions artifacts,
+dependency caches, Git LFS, Packages or paid build services are used.
+Unsigned files are uploaded directly to GitHub Releases. Signing files, archives
+and raw signing logs stay in the temporary runner environment and are cleaned.
+Public Actions logs and release/source history are public; published copies cannot
+be reliably recalled. Existing private-repository CI and Apple membership costs
+are separate from this public build design.
+
+App policies: https://photo.chaihome.cc/privacy and https://photo.chaihome.cc/terms
+
+Runner policy: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+Release limits: https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
+Environment protection: https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments

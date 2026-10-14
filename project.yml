@@ -1,0 +1,65 @@
+name: ChaiPhoto
+options:
+  bundleIdPrefix: tw.chai2374
+  deploymentTarget:
+    iOS: "17.0"
+configs:
+  Debug: debug
+  Release: release
+  Release-TestFlight: release
+  Release-AppStore: release
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  ChaiPhoto:
+    type: application
+    platform: iOS
+    sources:
+      - path: ChaiPhoto/ChaiPhotoApp.swift
+      - path: ChaiPhoto/ContentView.swift
+      - path: ChaiPhoto/AppSettings.swift
+      - path: ChaiPhoto/AppUpdateManager.swift
+      - path: ChaiPhoto/PhotoLibraryStore.swift
+      - path: ChaiPhoto/AssetImage.swift
+      - path: ChaiPhoto/MediaPreloader.swift
+      - path: ChaiPhoto/MediaServices.swift
+      - path: ChaiPhoto/MediaFilter.swift
+      - path: ChaiPhoto/AlbumPickerView.swift
+      - path: ChaiPhoto/NativePhotoZoom.swift
+      - path: ChaiPhoto/PhotoGestureSurface.swift
+      - path: ChaiPhoto/PlayerSurface.swift
+      - path: ChaiPhoto/VideoFeedView.swift
+      - path: ChaiPhoto/ReviewView.swift
+      - path: ChaiPhoto/ReviewQueueOrdering.swift
+      - path: ChaiPhoto/SortCompletionView.swift
+      - path: ChaiPhoto/InteractionTutorialView.swift
+      - path: ChaiPhoto/WelcomeGuide.swift
+      - path: ChaiPhoto/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: ChaiPhoto/Assets.xcassets
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tw.chai2374.ChaiPhoto
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "1.2.5"
+        CURRENT_PROJECT_VERSION: "31"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ChaiPhoto/Info.plist
+        INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG CHAIPHOTO_TESTFLIGHT"
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) CHAIPHOTO_TESTFLIGHT"
+        Release-TestFlight:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) CHAIPHOTO_TESTFLIGHT"
+        Release-AppStore:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) CHAIPHOTO_APPSTORE"
+    scheme:
+      testTargets: []

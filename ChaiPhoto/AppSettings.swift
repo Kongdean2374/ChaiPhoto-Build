@@ -1,0 +1,594 @@
+import SwiftUI
+import Foundation
+import UIKit
+import Darwin
+import Photos
+
+func L(_ zh: String, _ en: String) -> String {
+    UserDefaults.standard.string(forKey: "language") == "en" ? en : zh
+}
+
+@MainActor
+final class AppSettings: ObservableObject {
+    @Published var allowCloudPhoto: Bool {
+        didSet {
+            UserDefaults.standard.set(allowCloudPhoto, forKey: "allowCloudPhoto")
+            cloudPhotoSessionAllowed = false
+            cloudPhotoPromptHandled = false
+            showCloudPhotoPrompt = false
+        }
+    }
+    @Published var cloudPhotoSessionAllowed = false
+    @Published var showCloudPhotoPrompt = false
+    var cloudPhotoPromptHandled = false
+    var canDownloadPhoto: Bool { allowCloudPhoto || cloudPhotoSessionAllowed }
+
+    @Published var allowCloudVideo: Bool { didSet { UserDefaults.standard.set(allowCloudVideo, forKey: "allowCloudVideo"); cloudSessionAllowed = false; cloudPromptHandled = false } }
+    @Published var cloudSessionAllowed = false
+    var cloudPromptHandled = false
+    var canDownloadVideo: Bool { allowCloudVideo || cloudSessionAllowed }
+
+    @Published var fullSpeedPreload: Bool {
+        didSet { UserDefaults.standard.set(fullSpeedPreload, forKey: "fullSpeedPreload") }
+    }
+    @Published var photoPreloadCount: Int {
+        didSet { UserDefaults.standard.set(photoPreloadCount, forKey: "photoPreloadCount") }
+    }
+    @Published var videoPreloadCount: Int {
+        didSet { UserDefaults.standard.set(videoPreloadCount, forKey: "videoPreloadCount") }
+    }
+
+    var canPreloadPhotoNetwork: Bool { fullSpeedPreload || canDownloadPhoto }
+    var canPreloadVideoNetwork: Bool { fullSpeedPreload || canDownloadVideo }
+
+    @Published var textSize: String { didSet { UserDefaults.standard.set(textSize, forKey: "textSize") } }
+    @Published var language: String { didSet { UserDefaults.standard.set(language, forKey: "language") } }
+    @Published var appearance: String { didSet { UserDefaults.standard.set(appearance, forKey: "appearance") } }
+    @Published var deleteOnRight: Bool { didSet { UserDefaults.standard.set(deleteOnRight, forKey: "deleteOnRight") } }
+    @Published var autoplay: Bool { didSet { UserDefaults.standard.set(autoplay, forKey: "autoplay") } }
+    @Published var muted: Bool { didSet { UserDefaults.standard.set(muted, forKey: "muted") } }
+    @Published var haptics: Bool { didSet { UserDefaults.standard.set(haptics, forKey: "haptics") } }
+    @Published var autoEstimate: Bool { didSet { UserDefaults.standard.set(autoEstimate, forKey: "autoEstimate") } }
+    @Published var advanceAfterAlbumAction: Bool { didSet { UserDefaults.standard.set(advanceAfterAlbumAction, forKey: "advanceAfterAlbumAction") } }
+    @Published var favorites: Set<String> { didSet { UserDefaults.standard.set(Array(favorites), forKey: "videoFavorites") } }
+    init() {
+        let d = UserDefaults.standard
+        d.register(defaults: [
+            "language":"zh-Hant",
+            "appearance":"system",
+            "autoplay":true,
+            "muted":true,
+            "haptics":true,
+            "autoEstimate":true,
+            "fullSpeedPreload":false,
+            "photoPreloadCount":3,
+            "videoPreloadCount":2
+        ])
+        allowCloudPhoto = d.bool(forKey: "allowCloudPhoto")
+        allowCloudVideo = d.bool(forKey: "allowCloudVideo")
+        fullSpeedPreload = d.bool(forKey: "fullSpeedPreload")
+        photoPreloadCount = max(1, d.integer(forKey: "photoPreloadCount"))
+        videoPreloadCount = max(1, d.integer(forKey: "videoPreloadCount"))
+        textSize = d.string(forKey: "textSize") ?? "system"
+        language = d.string(forKey: "language") ?? "zh-Hant"
+        appearance = d.string(forKey: "appearance") ?? "system"
+        deleteOnRight = d.bool(forKey: "deleteOnRight")
+        autoplay = d.bool(forKey: "autoplay"); muted = d.bool(forKey: "muted")
+        haptics = d.bool(forKey: "haptics"); autoEstimate = d.bool(forKey: "autoEstimate")
+        advanceAfterAlbumAction = d.bool(forKey: "advanceAfterAlbumAction")
+        favorites = Set(d.stringArray(forKey: "videoFavorites") ?? [])
+    }
+    var colorScheme: ColorScheme? { appearance == "dark" ? .dark : appearance == "light" ? .light : nil }
+
+    func requestCloudPhotoDownloadPermission() {
+        guard !canDownloadPhoto, !cloudPhotoPromptHandled else { return }
+        cloudPhotoPromptHandled = true
+        showCloudPhotoPrompt = true
+    }
+
+    func allowCloudPhotosThisSession() {
+        cloudPhotoSessionAllowed = true
+        showCloudPhotoPrompt = false
+    }
+
+    func declineCloudPhotosForNow() {
+        showCloudPhotoPrompt = false
+    }
+
+    func successFeedback() { if haptics { UINotificationFeedbackGenerator().notificationOccurred(.success) } }
+
+    func feedback() { if haptics { UIImpactFeedbackGenerator(style: .light).impactOccurred() } }
+    func toggleFavorite(_ id: String) {
+        if favorites.contains(id) { favorites.remove(id) } else { favorites.insert(id) }
+    }
+}
+
+private enum AppLinks {
+    static let product = URL(string: "https://photo.chaihome.cc")!
+    static let privacy = URL(string: "https://photo.chaihome.cc/privacy")!
+    static let terms = URL(string: "https://photo.chaihome.cc/terms")!
+    static let support = URL(string: "https://photo.chaihome.cc/support")!
+    static let report = URL(string: "https://photo.chaihome.cc/report")!
+    static let knownIssues = URL(string: "https://photo.chaihome.cc/report#issues")!
+
+#if CHAIPHOTO_TESTFLIGHT
+    static let testFlight = URL(string: "https://testflight.apple.com/join/vHCZ7wZp")!
+    static let beta = URL(string: "https://photo.chaihome.cc/beta")!
+#endif
+}
+
+private func hardwareModelIdentifier() -> String {
+    var size = 0
+    sysctlbyname("hw.machine", nil, &size, nil, 0)
+    guard size > 0 else { return UIDevice.current.model }
+
+    var machine = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("hw.machine", &machine, &size, nil, 0) == 0 else {
+        return UIDevice.current.model
+    }
+    return String(cString: machine)
+}
+
+struct SettingsView: View {
+    var category: SettingsCategory? = nil
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var library: PhotoLibraryStore
+    @EnvironmentObject private var updateManager: AppUpdateManager
+    @State private var showDiagnosticsConfirmation = false
+
+    private func categoryLink(_ item: SettingsCategory) -> some View {
+        NavigationLink {
+            SettingsView(category: item)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(item.color.gradient, in: RoundedRectangle(cornerRadius: 11))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title).foregroundStyle(.primary)
+                    Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+            }.padding(.vertical, 5)
+        }
+    }
+
+    private var versionLabel: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return build.isEmpty ? version : "\(version) (Build \(build))"
+    }
+
+    private var photoAccessLabel: String {
+        switch library.authorization {
+        case .authorized: return "full"
+        case .limited: return "limited"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "not-determined"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private var diagnosticsText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? ""
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        let cloudPhoto = settings.allowCloudPhoto
+            ? "enabled"
+            : settings.cloudPhotoSessionAllowed ? "session" : "disabled"
+        let cloudVideo = settings.allowCloudVideo
+            ? "enabled"
+            : settings.cloudSessionAllowed ? "session" : "disabled"
+
+        return [
+            "ChaiPhoto Diagnostics v1",
+            "",
+            "App-Version: \(version)",
+            "Build: \(build)",
+            "iOS-Version: \(UIDevice.current.systemVersion)",
+            "Device-Model: \(hardwareModelIdentifier())",
+            "Photo-Access: \(photoAccessLabel)",
+            "Language: \(settings.language)",
+            "Appearance: \(settings.appearance)",
+            "Delete-Direction: \(settings.deleteOnRight ? "right" : "left")",
+            "Haptics: \(settings.haptics ? "enabled" : "disabled")",
+            "Cloud-Photo: \(cloudPhoto)",
+            "Cloud-Video: \(cloudVideo)",
+            "Photo-Preload: \(settings.photoPreloadCount)",
+            "Video-Preload: \(settings.videoPreloadCount)",
+            "Full-Speed-Preload: \(settings.fullSpeedPreload ? "enabled" : "disabled")",
+            "Low-Power-Mode: \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "enabled" : "disabled")"
+        ].joined(separator: "\n")
+    }
+
+    var body: some View {
+        Form {
+            if let category {
+                switch category {
+                case .appearance:
+                    Section(L("介面", "Appearance")) {
+                        Picker(L("顯示模式", "Theme"), selection: $settings.appearance) {
+                            Text(L("跟隨系統", "System")).tag("system")
+                            Text(L("淺色", "Light")).tag("light")
+                            Text(L("深色", "Dark")).tag("dark")
+                        }
+                        Picker(L("文字大小", "Text size"), selection: $settings.textSize) {
+                            Text(L("跟隨系統", "System")).tag("system")
+                            Text(L("標準", "Standard")).tag("standard")
+                            Text(L("加大", "Large")).tag("large")
+                            Text(L("特大", "Extra large")).tag("extra")
+                        }
+                        Picker(L("語言", "Language"), selection: $settings.language) {
+                            Text("繁體中文").tag("zh-Hant")
+                            Text("English").tag("en")
+                        }
+                    }
+                case .sorting:
+                    Section(L("整理操作", "Sorting")) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(L("照片滑動方向", "Photo swipe direction"))
+                            Picker(L("刪除方向", "Delete direction"), selection: $settings.deleteOnRight) {
+                                Text(L("← 待刪", "← Delete")).tag(false)
+                                Text(L("待刪 →", "Delete →")).tag(true)
+                            }.pickerStyle(.segmented)
+                            Text(settings.deleteOnRight ? L("右滑待刪，左滑保留", "Swipe right to delete; left to keep") : L("左滑待刪，右滑保留", "Swipe left to delete; right to keep"))
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Toggle(L("觸覺回饋", "Haptic feedback"), isOn: $settings.haptics)
+                        Toggle(L("自動估算待刪容量", "Estimate review size automatically"), isOn: $settings.autoEstimate)
+                        Toggle(L("照片加入相簿後自動下一張", "Advance after adding photo to albums"), isOn: $settings.advanceAfterAlbumAction)
+                        Text(L(
+                            "關閉時，加入或調整相簿後仍停留在目前照片，必須再左／右滑決定保留或待刪；開啟時，完成相簿變更後會視為保留並前往下一張。",
+                            "When off, album changes keep the current photo on screen until you swipe left/right to keep or delete it. When on, completing an album change marks it as kept and advances."
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                case .media:
+                    Section(L("照片", "Photos")) {
+                        Toggle(L("始終允許下載 iCloud 照片", "Always allow iCloud photo downloads"), isOn: $settings.allowCloudPhoto)
+                        Text(L("關閉時，偵測到照片只在 iCloud 會詢問是否僅在本次使用期間下載。", "When disabled, the app asks once per session when a photo needs to be downloaded from iCloud."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Section(L("影片", "Video")) {
+                        Toggle(L("始終允許下載 iCloud 影片", "Always allow iCloud video downloads"), isOn: $settings.allowCloudVideo)
+                        Toggle(L("自動播放", "Autoplay"), isOn: $settings.autoplay)
+                        Toggle(L("預設靜音", "Mute by default"), isOn: $settings.muted)
+                        Text(L("影片雙擊中間會直接切換 iOS 系統的喜好項目。", "Double-tapping the center of a video toggles the iOS system Favorite state."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Section(L("進階效能", "Advanced performance")) {
+                        DisclosureGroup(
+                            L("預載設定", "Preloading settings")
+                        ) {
+                            Toggle(
+                                L("全速預載", "Full-speed preloading"),
+                                isOn: $settings.fullSpeedPreload
+                            )
+
+                            Picker(
+                                L("照片預載數量", "Photos to preload"),
+                                selection: $settings.photoPreloadCount
+                            ) {
+                                Text("1").tag(1)
+                                Text("3").tag(3)
+                                Text("5").tag(5)
+                                Text("8").tag(8)
+                            }
+
+                            Picker(
+                                L("影片預載數量", "Videos to preload"),
+                                selection: $settings.videoPreloadCount
+                            ) {
+                                Text("1").tag(1)
+                                Text("2").tag(2)
+                                Text("3").tag(3)
+                                Text("4").tag(4)
+                            }
+
+                            Text(L(
+                                "全速預載可能在背景從 iCloud 預先下載後續照片與影片，會增加行動數據、電量與暫存空間使用。關閉時仍會優先預載本機內容。",
+                                "Full-speed preloading may download upcoming photos and videos from iCloud in the background, increasing cellular data, battery, and temporary storage use. When disabled, local media is still preloaded first."
+                            ))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                case .support:
+#if CHAIPHOTO_APPSTORE
+                    Section(L("支援與回報", "Support & feedback")) {
+                        HStack {
+                            Label(
+                                L("App Store 正式版本", "App Store release"),
+                                systemImage: "checkmark.seal.fill"
+                            )
+                            .foregroundStyle(.green)
+
+                            Spacer()
+
+                            Text(versionLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Link(destination: AppLinks.support) {
+                            Label(
+                                L("支援與問題回報", "Support & report a problem"),
+                                systemImage: "questionmark.circle"
+                            )
+                        }
+
+                        Text(L(
+                            "支援頁不會自動傳送 App 版本、裝置或系統資訊。若需要，可先使用下方「複製系統資訊」，再由你自行提供。",
+                            "The support page does not automatically send app, device, or system information. If needed, copy the system information below and provide it yourself."
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Section(L("分享與診斷", "Sharing & diagnostics")) {
+                        ShareLink(
+                            item: AppLinks.product,
+                            subject: Text("ChaiPhoto"),
+                            message: Text(L(
+                                "ChaiPhoto 是一款專為 iPhone 設計的照片與影片整理工具，可用滑動快速整理相簿，並在待刪頁再次確認。",
+                                "ChaiPhoto is an iPhone photo and video organizer that helps you sort your library with quick swipes and review items before deletion."
+                            ))
+                        ) {
+                            Label(
+                                L("分享 ChaiPhoto", "Share ChaiPhoto"),
+                                systemImage: "square.and.arrow.up"
+                            )
+                        }
+
+                        Button {
+                            showDiagnosticsConfirmation = true
+                        } label: {
+                            Label(
+                                L("複製系統資訊", "Copy system information"),
+                                systemImage: "doc.on.doc"
+                            )
+                        }
+
+                        Text(L(
+                            "系統資訊只會在你確認後複製到剪貼簿，不會自動傳送到回報網站。",
+                            "System information is copied only after you confirm and is never sent to the report website automatically."
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+#else
+                    Section(L("Beta 測試與回報", "Beta testing & feedback")) {
+                        HStack {
+                            Label(
+                                L("TestFlight 測試中", "TestFlight beta"),
+                                systemImage: "checkmark.seal.fill"
+                            )
+                            .foregroundStyle(.green)
+
+                            Spacer()
+
+                            Text(versionLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Button {
+                            Task { await updateManager.checkManually() }
+                        } label: {
+                            HStack {
+                                Label(
+                                    L("檢查更新", "Check for updates"),
+                                    systemImage: "arrow.clockwise"
+                                )
+
+                                Spacer()
+
+                                if updateManager.isChecking {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+                        }
+                        .disabled(updateManager.isChecking)
+
+                        Link(destination: AppLinks.report) {
+                            Label(
+                                L("回報問題（建議）", "Report a problem (recommended)"),
+                                systemImage: "exclamationmark.bubble"
+                            )
+                        }
+
+                        Text(L(
+                            "開啟回報網站時不會自動傳送 App 版本、裝置或系統資訊。若需要，可先使用下方「複製系統資訊」，再由你自行貼到網站。",
+                            "Opening the report website does not automatically send app, device, or system information. If needed, copy the system information below and paste it yourself."
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        Link(destination: AppLinks.knownIssues) {
+                            Label(
+                                L("已知問題與處理進度", "Known issues & progress"),
+                                systemImage: "list.bullet.clipboard"
+                            )
+                        }
+
+                        Link(destination: AppLinks.testFlight) {
+                            Label(
+                                L("TestFlight 公開測試", "Public TestFlight beta"),
+                                systemImage: "airplane"
+                            )
+                        }
+                    }
+
+                    Section(L("分享與診斷", "Sharing & diagnostics")) {
+                        ShareLink(
+                            item: AppLinks.beta,
+                            subject: Text("ChaiPhoto"),
+                            message: Text(L(
+                                "ChaiPhoto 是一款用滑動快速整理 iPhone 照片與影片的 App，目前免費公開 Beta 測試中。",
+                                "ChaiPhoto helps you quickly sort iPhone photos and videos with simple swipes. It is currently available as a free public beta."
+                            ))
+                        ) {
+                            Label(
+                                L("分享 ChaiPhoto", "Share ChaiPhoto"),
+                                systemImage: "square.and.arrow.up"
+                            )
+                        }
+
+                        Button {
+                            showDiagnosticsConfirmation = true
+                        } label: {
+                            Label(
+                                L("複製系統資訊", "Copy system information"),
+                                systemImage: "doc.on.doc"
+                            )
+                        }
+
+                        Text(L(
+                            "系統資訊只會在你確認後複製到剪貼簿，不會自動傳送到回報網站。",
+                            "System information is copied only after you confirm and is never sent to the report website automatically."
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+#endif
+                case .information:
+                    Section(L("紀錄與說明", "History & information")) {
+                        NavigationLink(L("完整手勢教學", "Gesture guide")) { GestureReferenceView() }
+                        NavigationLink(L("操作紀錄", "Activity history")) { HistoryView() }
+                        Link(destination: AppLinks.privacy) {
+                            HStack {
+                                Text(L("隱私政策", "Privacy policy"))
+                                Spacer()
+                                Image(systemName: "arrow.up.right.square")
+                            }
+                        }
+                        Link(destination: AppLinks.terms) {
+                            HStack {
+                                Text(L("使用政策", "Terms of use"))
+                                Spacer()
+                                Image(systemName: "arrow.up.right.square")
+                            }
+                        }
+                        Link(destination: AppLinks.support) {
+                            HStack {
+                                Text(L("支援網站", "Support"))
+                                Spacer()
+                                Image(systemName: "arrow.up.right.square")
+                            }
+                        }
+                    }
+                }
+            } else {
+                Section {
+                    HStack(spacing: 16) {
+                        Image(systemName: "photo.stack.fill")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 64, height: 64)
+                            .background(LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20))
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("ChaiPhoto").font(.title2.bold())
+                            Text(L("讓回憶留下，讓空間自由。", "Keep the memories. Make room."))
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(versionLabel).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 8)
+                }
+                Section(L("偏好設定", "Preferences")) {
+                    categoryLink(.appearance)
+                    categoryLink(.sorting)
+                    categoryLink(.media)
+                }
+                Section(L("支援與資訊", "Support & information")) {
+                    categoryLink(.support)
+                    categoryLink(.information)
+                }
+            }
+        }
+        .navigationTitle(category?.title ?? L("設定", "Settings"))
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(item: $updateManager.manualAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text(L("好", "OK")))
+            )
+        }
+        .alert(
+            L("複製系統資訊？", "Copy system information?"),
+            isPresented: $showDiagnosticsConfirmation
+        ) {
+            Button(L("取消", "Cancel"), role: .cancel) {}
+
+            Button(L("確定並複製", "Copy")) {
+                UIPasteboard.general.string = diagnosticsText
+                settings.successFeedback()
+                library.successNotice = L(
+                    "系統資訊已複製到剪貼簿。",
+                    "System information copied to the clipboard."
+                )
+            }
+        } message: {
+            Text(L(
+                "將複製 ChaiPhoto 版本與 Build、iOS 版本、iPhone 機型識別、照片權限狀態、App 語言與部分 ChaiPhoto 設定。\n\n不包含照片、影片、檔名、相簿名稱、位置、Apple ID、電話或聯絡人，也不會自動上傳。只有你自行貼上或分享後，這些文字才會離開 App。",
+                "This copies the ChaiPhoto version and build, iOS version, iPhone model identifier, Photos permission status, app language, and selected ChaiPhoto settings.\n\nIt does not include photos, videos, filenames, album names, location, Apple ID, phone number, or contacts, and nothing is uploaded automatically. The text leaves the app only if you choose to paste or share it."
+            ))
+        }
+    }
+}
+
+// String formatting must explicitly use the app language; SwiftUI locale cannot
+// localize a String that Date.formatted() has already produced.
+func appDateTime(_ date: Date) -> String {
+    let locale = Locale(identifier: UserDefaults.standard.string(forKey: "language") == "en" ? "en_US" : "zh_TW")
+    return date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
+}
+
+
+// Each destination owns the same settings bindings; moving rows changes no defaults.
+enum SettingsCategory {
+    case appearance, sorting, media, support, information
+    var title: String {
+        switch self {
+        case .appearance: L("外觀與語言", "Appearance & language")
+        case .sorting: L("整理與操作", "Sorting & controls")
+        case .media: L("播放與 iCloud", "Playback & iCloud")
+        case .support: L("回報與更新", "Feedback & updates")
+        case .information: L("紀錄與關於", "History & about")
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .appearance: L("顯示模式、文字大小、語言", "Theme, text size, language")
+        case .sorting: L("滑動方向、觸覺、相簿操作", "Swipe direction, haptics, albums")
+        case .media: L("自動播放、下載與預載", "Autoplay, downloads, preloading")
+        case .support: L("問題回報、版本、系統資訊", "Report an issue, version, diagnostics")
+        case .information: L("操作紀錄、手勢教學、隱私", "History, gesture guide, privacy")
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .appearance: "paintpalette.fill"
+        case .sorting: "hand.draw.fill"
+        case .media: "play.rectangle.fill"
+        case .support: "bubble.left.and.bubble.right.fill"
+        case .information: "info.circle.fill"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .appearance: .purple
+        case .sorting: .indigo
+        case .media: .blue
+        case .support: .teal
+        case .information: .gray
+        }
+    }
+}
