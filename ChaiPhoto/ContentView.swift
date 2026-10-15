@@ -108,6 +108,7 @@ struct SortView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var mediaPreloader: MediaPreloader
     @EnvironmentObject private var updateManager: AppUpdateManager
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var filter = MediaFilter.restored()
     @State private var showFilter = false
@@ -169,7 +170,7 @@ struct SortView: View {
             "|pn:\(settings.canPreloadPhotoNetwork)" +
             "|vn:\(settings.canPreloadVideoNetwork)"
 
-        return ids + "|" + counts + "|" + modes + "|r:\(library.revision)"
+        return ids + "|" + counts + "|" + modes + "|r:\(library.revision)|active:\(scenePhase == .active)"
     }
 
     private var preloadCandidates: [PHAsset] {
@@ -317,6 +318,7 @@ struct SortView: View {
         }
         .padding(.top, 2)
         .task(id: preloadTaskKey) {
+            guard scenePhase == .active else { mediaPreloader.clear(); return }
             mediaPreloader.prepareNext(
                 preloadCandidates,
                 keepingCurrentID: currentAsset?.localIdentifier,
