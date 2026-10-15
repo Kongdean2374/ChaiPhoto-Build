@@ -19,7 +19,7 @@ class DeliveryDiagnosticsTests(unittest.TestCase):
     def test_shell_failure_keeps_original_exit_without_retry_or_raw_output(self):
         root = SCRIPT.parents[1]
         script = (root / "scripts/sign_upload.sh").read_text()
-        for command, stage, status in [("-exportArchive", "export-upload", 70),
+        for command, stage, status in [("-exportArchive", "export", 70),
                                         ("-project", "archive", 65)]:
             block = re.search(r"^if xcodebuild " + re.escape(command) + r"\b.*?^fi$",
                               script, re.M | re.S)[0]

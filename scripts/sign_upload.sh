@@ -45,7 +45,8 @@ python3 scripts/resolve_version.py
 xcodegen generate
 python3 scripts/verify_public_tree.py --project
 # Match the key filename used by the existing successful delivery workflow.
-KEY_PATH="$SIGN_DIR/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+mkdir -p "$SIGN_DIR/private_keys"
+KEY_PATH="$SIGN_DIR/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
 printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$KEY_PATH"
 printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 -D > "$SIGN_DIR/distribution.p12"
 printf '%s' "$PROVISIONING_PROFILE_BASE64" | base64 -D > "$SIGN_DIR/profile.mobileprovision"
@@ -118,26 +119,27 @@ EXPORT_PLIST="$SIGN_DIR/ExportOptions.plist" PROFILE_NAME="$PROFILE_NAME" SIGNIN
 import os, plistlib
 with open(os.environ["EXPORT_PLIST"], "wb") as f:
     plistlib.dump({
-        "method": "app-store-connect", "destination": "upload", "signingStyle": "manual",
+        "method": "app-store-connect", "destination": "export", "signingStyle": "manual",
         "signingCertificate": os.environ["SIGNING_IDENTITY"],
         "provisioningProfiles": {"tw.chai2374.ChaiPhoto": os.environ["PROFILE_NAME"]},
         "teamID": os.environ["APPLE_TEAM_ID"], "uploadSymbols": True,
         "manageAppVersionAndBuildNumber": False
     }, f)
 PY
-STAGE="App Store Connect upload"
-echo "Delivery stage export-upload started (manual signing; fixed build number)."
+STAGE="local App Store IPA export"
+echo "Delivery stage export started (local manual signing; no upload)."
 if xcodebuild -exportArchive -archivePath "$SIGN_DIR/ChaiPhoto.xcarchive" \
   -exportOptionsPlist "$SIGN_DIR/ExportOptions.plist" -exportPath "$SIGN_DIR/export" \
-  -authenticationKeyPath "$KEY_PATH" -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
-  -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" > "$SIGN_DIR/upload.log" 2>&1; then
-  echo "Delivery stage export-upload completed (exit=0)."
+  > "$SIGN_DIR/export.log" 2>&1; then
+  echo "Delivery stage export completed (exit=0)."
 else
   result=$?
-  python3 scripts/delivery_diagnostics.py --stage export-upload --exit-code "$result" \
-    --log "$SIGN_DIR/upload.log" || echo "::error::Safe export/upload diagnostic unavailable."
+  python3 scripts/delivery_diagnostics.py --stage export --exit-code "$result" \
+    --log "$SIGN_DIR/export.log" || echo "::error::Safe export diagnostic unavailable."
   exit "$result"
 fi
+STAGE="exported IPA validation and Apple upload"
+python3 scripts/upload_delivery.py --work-dir "$SIGN_DIR"
 echo "Apple upload command completed. Processing, testing availability, review and release require Apple confirmation."
 {
   echo "ChaiPhoto $RELEASE_FLAVOR upload command completed."

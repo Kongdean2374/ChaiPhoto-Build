@@ -40,8 +40,10 @@
     "scripts/release_preflight.py",
     "scripts/resolve_version.py",
     "scripts/sign_upload.sh",
+    "scripts/upload_delivery.py",
     "scripts/validate_release.py",
     "scripts/verify_public_tree.py",
-    "tests/test_delivery_diagnostics.py"
+    "tests/test_delivery_diagnostics.py",
+    "tests/test_upload_delivery.py"
   ]
 }

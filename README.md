@@ -106,14 +106,24 @@ Environment protection: https://docs.github.com/en/actions/reference/workflows-a
 ## Delivery failures and retries
 
 The API key file uses the conventional AuthKey_<Key ID>.p8 filename. Export keeps
-app-store-connect, destination=upload, manual signing, the existing distribution
+app-store-connect, destination=export, manual signing, the existing distribution
 identity/profile and manageAppVersionAndBuildNumber=false. No automatic signing
-repair or certificate creation is enabled.
+repair or certificate creation is enabled. Export is local and does not use an
+Xcode account or upload credentials. The exported IPA is checked again for the
+expected iPhoneOS device, flavor and version before a separate Apple altool upload.
+The existing API key is discovered in the private signing directory's private_keys
+folder; no Apple ID password, replacement certificate or new secret is required.
 
-On archive or export/upload failure, the workflow preserves the original exit code
+The stages archive, export, ipa-validation and apple-upload are reported separately.
+On archive or export failure, the workflow preserves the original exit code
 and prints a structured summary containing only the stage, exit code, ITMS codes,
 allowlisted NSError domain/code pairs, HTTP error statuses and fixed diagnostic
-signals. Signals are hints, not a confirmed root cause. Raw message excerpts,
+signals and fixed vocabulary hints. Signals are hints, not a confirmed root cause.
+The uploader reads Apple's XML receipt and reports only numeric product error codes.
+Success requires both a zero exit code and an explicit structured success receipt
+with no product errors. A zero exit with errors or unrecognized output stops the
+workflow instead of silently claiming delivery. It does not retry automatically.
+Raw message excerpts,
 UserInfo, URLs, paths, identifiers, credentials and original log files are never
 published. Unknown errors may have empty code lists. Logs remain temporary and
 are deleted by the signing cleanup trap; no log artifact is uploaded.

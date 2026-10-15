@@ -25,10 +25,17 @@ SIGNALS = {
     "export-options": r"exportoptions[^\n]{0,100}(?:invalid|error)|(?:invalid|unsupported)[^\n]{0,80}(?:distribution method|export option)",
     "validation": r"validation failed|asset validation|invalid binary",
 }
+STAGES = {"archive", "export-upload", "export", "ipa-validation", "apple-upload"}
+# These are fixed vocabulary labels, never fragments copied from the log.
+KEYWORDS = ("account", "agreement", "api", "authentication", "authorization", "bundle",
+            "certificate", "configuration", "connection", "credential", "duplicate", "entitlement",
+            "expired", "export", "file", "invalid", "issuer", "key", "network", "permission",
+            "profile", "provisioning", "rejected", "signature", "signing", "timeout", "upload",
+            "validation", "version")
 
 
 def summarize(text, stage, exit_code):
-    if stage not in {"archive", "export-upload"} or type(exit_code) is not int or not 0 <= exit_code <= 255:
+    if stage not in STAGES or type(exit_code) is not int or not 0 <= exit_code <= 255:
         raise ValueError("Invalid diagnostic input")
     domain_codes = set()
     for domain in DOMAINS:
@@ -42,18 +49,19 @@ def summarize(text, stage, exit_code):
         text, re.I,
     )})[:20]
     return {
-        "stage": stage, "tool": "xcodebuild", "exit_code": exit_code,
+        "stage": stage, "tool": "altool" if stage == "apple-upload" else "xcodebuild", "exit_code": exit_code,
         "itms_codes": itms,
         "domain_codes": [{"domain": d, "code": c} for d, c in sorted(domain_codes)[:20]],
         "http_statuses": statuses,
         "signals": [name for name, pattern in SIGNALS.items() if re.search(pattern, text, re.I)],
+        "keyword_hints": [word for word in KEYWORDS if re.search(r"\b" + word + r"\b", text, re.I)],
         "raw_log_published": False,
     }
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", required=True, choices=["archive", "export-upload"])
+    parser.add_argument("--stage", required=True, choices=sorted(STAGES))
     parser.add_argument("--exit-code", required=True, type=int)
     parser.add_argument("--log", required=True, type=Path)
     args = parser.parse_args()
