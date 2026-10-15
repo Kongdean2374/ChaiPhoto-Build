@@ -52,7 +52,7 @@ final class ExperienceRegressionTests: XCTestCase {
             defaults.set("synthetic-progress", forKey: "progress-fixture")
             let old = AppSettings(defaults: defaults)
             XCTAssertFalse(old.showOnboarding)
-            XCTAssertEqual(old.preloadPreset, .custom)
+            XCTAssertEqual(old.preloadPreset, .aggressive)
             XCTAssertEqual(old.photoPreloadCount, 8)
             XCTAssertEqual(old.videoPreloadCount, 4)
             XCTAssertTrue(old.fullSpeedPreload)
@@ -91,12 +91,68 @@ final class ExperienceRegressionTests: XCTestCase {
             defaults.set(3, forKey: OnboardingPolicy.pageKey)
             let next = AppSettings(defaults: defaults)
             XCTAssertTrue(next.showOnboarding)
-            XCTAssertEqual(OnboardingPolicy.page(defaults), 3)
+            XCTAssertEqual(OnboardingPolicy.page(defaults), 2)
             XCTAssertEqual(next.preloadPreset, .economy)
             XCTAssertFalse(next.canDownloadPhoto)
             XCTAssertFalse(next.canDownloadVideo)
             OnboardingPolicy.complete(defaults)
             XCTAssertFalse(AppSettings(defaults: defaults).showOnboarding)
+        }
+    }
+
+    @MainActor func testOffRequiresEachAssetEvenWithSavedPermanentAndSessionConsent() {
+        isolated { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.allowCloudPhoto = true; settings.allowCloudVideo = true
+            settings.applyPreloadPreset(.off)
+            settings.cloudPhotoSessionAllowed = true; settings.cloudSessionAllowed = true
+            XCTAssertEqual(settings.effectivePreload, .init(photos: 0, videos: 0, fullSpeed: false))
+            XCTAssertFalse(settings.canPreloadPhotoNetwork); XCTAssertFalse(settings.canPreloadVideoNetwork)
+            XCTAssertFalse(settings.canDownloadPhoto(for: "photo-A"))
+            settings.requestCloudPhotoDownloadPermission(for: "photo-A")
+            XCTAssertTrue(settings.showCloudPhotoPrompt)
+            settings.allowCloudPhotosThisSession() // Even a legacy caller must stay item-only in Off.
+            XCTAssertTrue(settings.canDownloadPhoto(for: "photo-A"))
+            XCTAssertFalse(settings.canDownloadPhoto(for: "photo-B"))
+            settings.requestCloudPhotoDownloadPermission(for: "photo-B")
+            XCTAssertTrue(settings.showCloudPhotoPrompt)
+            settings.declineCloudPhotosForNow()
+            settings.requestCloudPhotoDownloadPermission(for: "photo-C")
+            XCTAssertTrue(settings.showCloudPhotoPrompt, "Declining one item must not suppress the next item")
+            XCTAssertTrue(settings.shouldPromptCloudVideo(for: "video-A"))
+            settings.allowCloudVideoItem("video-A")
+            XCTAssertTrue(settings.canDownloadVideo(for: "video-A"))
+            XCTAssertFalse(settings.canDownloadVideo(for: "video-B"))
+            XCTAssertTrue(settings.shouldPromptCloudVideo(for: "video-B"))
+            XCTAssertFalse(settings.canPreloadPhotoNetwork); XCTAssertFalse(settings.canPreloadVideoNetwork)
+            let reopened = AppSettings(defaults: defaults)
+            XCTAssertEqual(reopened.preloadPreset, .off)
+            XCTAssertFalse(reopened.canDownloadPhoto(for: "photo-A"))
+            XCTAssertFalse(reopened.canDownloadVideo(for: "video-A"))
+            XCTAssertTrue(defaults.bool(forKey: "allowCloudPhoto"), "Saved preference retained, suspended in Off")
+        }
+    }
+
+    @MainActor func testBalancedRespondsToResourceConditionsWithoutGrantingPermission() {
+        isolated { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.applyPreloadPreset(.balanced)
+            settings.preloadEnvironment = .init(charging: true)
+            XCTAssertEqual(settings.effectivePreload.photos, 5)
+            XCTAssertFalse(settings.canPreloadPhotoNetwork)
+            settings.allowCloudPhoto = true
+            XCTAssertTrue(settings.canPreloadPhotoNetwork)
+            settings.preloadEnvironment = .init(expensive: true)
+            XCTAssertEqual(settings.effectivePreload.photos, 1)
+            XCTAssertFalse(settings.canPreloadPhotoNetwork)
+            XCTAssertTrue(settings.canDownloadPhoto(for: "current"), "Foreground consent is separate from background budgets")
+            settings.preloadEnvironment = .init(lowBattery: true)
+            XCTAssertEqual(settings.effectivePreload.videos, 0)
+            settings.preloadEnvironment = .init(thermallyLimited: true)
+            XCTAssertEqual(settings.effectivePreload.photos, 0)
+            settings.applyPreloadPreset(.aggressive)
+            XCTAssertEqual(settings.effectivePreload, .init(photos: 8, videos: 4, fullSpeed: true))
+            XCTAssertFalse(settings.canPreloadVideoNetwork, "Intensity never grants video consent")
         }
     }
 

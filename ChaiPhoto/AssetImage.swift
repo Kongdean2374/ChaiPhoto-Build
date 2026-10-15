@@ -92,10 +92,15 @@ struct AssetImage: View {
     let asset: PHAsset
     let targetSize: CGSize
     var contentMode: PHImageContentMode = .aspectFill
+    var asksForCloudPhoto = false
 
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var mediaPreloader: MediaPreloader
     @StateObject private var loader = ThumbnailLoader()
+
+    private var allowNetwork: Bool {
+        asset.mediaType == .video ? settings.canDownloadVideo(for: asset.localIdentifier) : settings.canDownloadPhoto(for: asset.localIdentifier)
+    }
 
     var body: some View {
         ZStack {
@@ -142,7 +147,7 @@ struct AssetImage: View {
                 }
             }
         }
-        .task(id: "\(asset.localIdentifier)-\(Int(targetSize.width))-\(Int(targetSize.height))-\(settings.canPreloadPhotoNetwork)") {
+        .task(id: "\(asset.localIdentifier)-\(Int(targetSize.width))-\(Int(targetSize.height))-\(allowNetwork)") {
             let seeded = mediaPreloader.cachedImage(for: asset.localIdentifier)
             loader.seed(seeded, for: asset)
             mediaPreloader.cancel(assetID: asset.localIdentifier)
@@ -154,12 +159,19 @@ struct AssetImage: View {
                     height: max(1, targetSize.height) * UIScreen.main.scale
                 ),
                 mode: contentMode,
-                allowNetwork: settings.canPreloadPhotoNetwork
+                allowNetwork: allowNetwork
             )
         }
         .onChange(of: loader.inCloud) { _, cloud in
-            if cloud && !settings.canPreloadPhotoNetwork {
-                settings.requestCloudPhotoDownloadPermission()
+            if cloud && !allowNetwork && asksForCloudPhoto && asset.mediaType == .image {
+                settings.requestCloudPhotoDownloadPermission(for: asset.localIdentifier)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if asksForCloudPhoto && loader.inCloud && !allowNetwork && !loader.downloading {
+                Button(L("下載這張照片", "Download this photo")) {
+                    settings.requestCloudPhotoDownloadPermission(for: asset.localIdentifier, retry: true)
+                }.buttonStyle(.borderedProminent).padding(8)
             }
         }
         .animation(.easeInOut(duration: 0.18), value: loader.downloading)
@@ -181,7 +193,7 @@ struct FramedPhoto: View {
             let fittedHeight = fittedWidth / ratio
             ZStack {
                 Color.clear
-                AssetImage(asset: asset, targetSize: CGSize(width: fittedWidth, height: fittedHeight), contentMode: .aspectFit)
+                AssetImage(asset: asset, targetSize: CGSize(width: fittedWidth, height: fittedHeight), contentMode: .aspectFit, asksForCloudPhoto: true)
                     .frame(width: fittedWidth, height: fittedHeight)
                     .background(.black)
                     .overlay(Rectangle().strokeBorder(colorScheme == .dark ? Color.white.opacity(0.8) : Color.black.opacity(0.7), lineWidth: 1))
@@ -199,6 +211,7 @@ struct AssetPreview: View {
     @State private var offset: CGSize = .zero
     @State private var baseOffset: CGSize = .zero
     @State private var showInfo = false
+    @State private var cloudPhotoUnavailable = false
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -211,14 +224,41 @@ struct AssetPreview: View {
             if asset.mediaType == .video {
                 LocalVideoView(asset: asset, active: true, autoplay: settings.autoplay, muted: settings.muted)
             } else {
-                NativePhotoZoom(asset: asset)
+                NativePhotoZoom(asset: asset, onCloudUnavailable: {
+                    cloudPhotoUnavailable = true
+                    settings.requestCloudPhotoDownloadPermission(for: asset.localIdentifier, inPreview: true)
+                })
 
+            }
+            if cloudPhotoUnavailable && !settings.canDownloadPhoto(for: asset.localIdentifier) {
+                Button(L("下載這張照片", "Download this photo")) {
+                    settings.requestCloudPhotoDownloadPermission(for: asset.localIdentifier, inPreview: true, retry: true)
+                }.buttonStyle(.borderedProminent)
             }
             Text(asset.creationDate.map { appDateTime($0) } ?? L("日期不明", "Unknown date"))
                 .font(.caption).foregroundStyle(.secondary).padding(12)
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .sheet(isPresented: $showInfo) { MediaInfoView(asset: asset) }
+        .alert(L("下載 iCloud 照片？", "Download iCloud photo?"), isPresented: Binding(
+            get: { settings.showCloudPhotoPrompt && settings.cloudPhotoPromptInPreview && !showInfo },
+            set: { settings.showCloudPhotoPrompt = $0 }
+        )) {
+            Button(L("暫不載入", "Not now"), role: .cancel) { settings.declineCloudPhotosForNow() }
+            if settings.preloadPreset == .off {
+                Button(L("只下載這張", "Download this photo")) { settings.allowCloudPhotoItem() }
+            } else {
+                Button(L("本次允許", "Allow this session")) { settings.allowCloudPhotosThisSession() }
+                Button(L("始終允許", "Always allow")) { settings.allowCloudPhoto = true }
+            }
+        } message: {
+            Text(settings.preloadPreset == .off
+                 ? L("只下載這張照片。可到設定更改預載模式。", "Download this photo only. Change preloading in Settings.")
+                 : L("下載可能使用行動數據。可到設定更改預載模式。", "Downloads may use cellular data. Change preloading in Settings."))
+        }
+        .onDisappear {
+            if settings.cloudPhotoPromptInPreview { settings.declineCloudPhotosForNow() }
+        }
     }
 }
 
@@ -801,7 +841,7 @@ struct LocalVideoView: View {
             if loader.player == nil { reload() }
             loader.setVisible(active || showFullscreen)
         }
-        .onChange(of: settings.canPreloadVideoNetwork) { _, _ in
+        .onChange(of: settings.canDownloadVideo(for: asset.localIdentifier)) { _, _ in
             // Revoke/cancel an in-flight cloud request as well as granting access.
             reload()
         }
@@ -815,9 +855,8 @@ struct LocalVideoView: View {
         .onChange(of: loader.inCloud) { _, cloud in
             if cloud &&
                active &&
-               !settings.canPreloadVideoNetwork &&
-               !settings.cloudPromptHandled {
-                settings.cloudPromptHandled = true
+               !settings.canDownloadVideo(for: asset.localIdentifier) &&
+               settings.shouldPromptCloudVideo(for: asset.localIdentifier) {
                 askCloud = true
             }
         }
@@ -829,18 +868,16 @@ struct LocalVideoView: View {
                 settings.cloudPromptHandled = true
             }
 
-            Button(L("本次允許", "Allow this session")) {
-                settings.cloudSessionAllowed = true
-            }
-
-            Button(L("始終允許", "Always allow")) {
-                settings.allowCloudVideo = true
+            if settings.preloadPreset == .off {
+                Button(L("只下載這部", "Download this video")) { settings.allowCloudVideoItem(asset.localIdentifier) }
+            } else {
+                Button(L("本次允許", "Allow this session")) { settings.cloudSessionAllowed = true }
+                Button(L("始終允許", "Always allow")) { settings.allowCloudVideo = true }
             }
         } message: {
-            Text(L(
-                "偵測到影片只存在於 iCloud。允許後才會下載；已存在於本機的影片不會再顯示雲端下載進度。",
-                "This video is stored only in iCloud. It will download after you allow it. Videos already available locally will no longer show cloud-download progress."
-            ))
+            Text(settings.preloadPreset == .off
+                 ? L("只下載這部影片。可到設定更改預載模式。", "Download this video only. Change preloading in Settings.")
+                 : L("下載可能使用行動數據。可到設定更改預載模式。", "Downloads may use cellular data. Change preloading in Settings."))
         }
         .fullScreenCover(isPresented: $showFullscreen) {
             SharedVideoFullscreenView(
@@ -1033,7 +1070,7 @@ struct LocalVideoView: View {
             )
 
             Button(L("嘗試重試", "Try again")) {
-                if !loader.inCloud || settings.canPreloadVideoNetwork {
+                if !loader.inCloud || settings.canDownloadVideo(for: asset.localIdentifier) {
                     reload()
                 } else {
                     askCloud = true
@@ -1079,7 +1116,7 @@ struct LocalVideoView: View {
 
     private func reload() {
         let preparedPlayer =
-            mediaPreloader.takePreparedPlayer(for: asset.localIdentifier, allowNetwork: settings.canDownloadVideo)
+            mediaPreloader.takePreparedPlayer(for: asset.localIdentifier, allowNetwork: settings.canDownloadVideo(for: asset.localIdentifier))
         let preparedPoster =
             mediaPreloader.cachedImage(for: asset.localIdentifier)
 
@@ -1089,7 +1126,7 @@ struct LocalVideoView: View {
             asset,
             autoplay: autoplay,
             muted: muted,
-            allowNetwork: settings.canPreloadVideoNetwork,
+            allowNetwork: settings.canDownloadVideo(for: asset.localIdentifier),
             sceneActive: scenePhase == .active,
             preparedPlayer: preparedPlayer,
             preparedPoster: preparedPoster

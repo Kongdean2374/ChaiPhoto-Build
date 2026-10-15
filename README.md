@@ -39,11 +39,11 @@ inaccessible APIs or pagination limits stop delivery. Both current and legacy Ap
 state field names are supported. The checks cannot guarantee final Apple validation
 or prevent cross-repository races.
 
-The owner reports 1.2.6 (58) is already in TestFlight. Never reuse 58.
-The next candidate is 1.2.6 (60), subject to a fresh Apple check. Choose an unused
-even build above the highest existing build if 60 is no longer available.
-No number is reserved by source changes or validation builds. The repository build
-setting remains a placeholder; an Apple upload requires separate owner authorization.
+The owner reports 1.2.6 (58) is already in TestFlight; build 60 was also uploaded.
+Never reuse either number. Each new TestFlight upload must use an unused even build
+above Apple's highest existing build, confirmed by live preflight. Source changes
+and validation builds do not reserve a number. The repository build setting remains
+a placeholder; Apple uploads require separate owner authorization.
 
 The concurrency lock is shared between the two Apple workflows only within this
 repository. Never deliver from the private and public repositories at the same time.
@@ -87,9 +87,14 @@ through the established authorized process. No feedback or website token is held
 ## Local build and snapshot updates
 
 This 1.2.6 snapshot starts each new process in Sort and keeps the current tab when
-returning from the background. Fresh installs get a resumable five-step setup;
-existing preferences and sorting progress are preserved. Preload intensity never
-grants iCloud download permission. Beta updates use the existing Beta API;
+returning from the background. Fresh installs get a resumable three-step setup;
+existing preferences and sorting progress are preserved. Preloading has only four modes: Off, Low, Balanced and Aggressive, with no manual
+count controls. Balanced observes battery, charging, Low Power Mode, thermal state
+and network cost/Low Data Mode; Aggressive uses the existing 8-photo/4-video cap.
+Off cancels background preparation and requires item-specific cloud consent even
+when a saved permanent or session permission exists. Local display still works;
+Off does not blank the library. Item grants remain in memory and never permit the
+next asset or background preloading. Preload intensity never grants download permission. Beta updates use the existing Beta API;
 App Store updates use Apple's public Lookup with app identity and link validation.
 
 The manual validation workflow compiles both Release-TestFlight and Release-AppStore

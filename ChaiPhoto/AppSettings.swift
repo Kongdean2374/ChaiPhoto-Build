@@ -3,6 +3,7 @@ import Foundation
 import UIKit
 import Darwin
 import Photos
+import Network
 
 func L(_ zh: String, _ en: String) -> String {
     UserDefaults.standard.string(forKey: "language") == "en" ? en : zh
@@ -22,36 +23,84 @@ final class AppSettings: ObservableObject {
     @Published var cloudPhotoSessionAllowed = false
     @Published var showCloudPhotoPrompt = false
     var cloudPhotoPromptHandled = false
-    var canDownloadPhoto: Bool { DownloadPolicy.allowed(permanent: allowCloudPhoto, session: cloudPhotoSessionAllowed) }
+    var canDownloadPhoto: Bool { preloadPreset != .off && DownloadPolicy.allowed(permanent: allowCloudPhoto, session: cloudPhotoSessionAllowed) }
 
     @Published var allowCloudVideo: Bool { didSet { defaults.set(allowCloudVideo, forKey: "allowCloudVideo"); cloudSessionAllowed = false; cloudPromptHandled = false } }
     @Published var cloudSessionAllowed = false
     var cloudPromptHandled = false
-    var canDownloadVideo: Bool { DownloadPolicy.allowed(permanent: allowCloudVideo, session: cloudSessionAllowed) }
+    var canDownloadVideo: Bool { preloadPreset != .off && DownloadPolicy.allowed(permanent: allowCloudVideo, session: cloudSessionAllowed) }
     @Published var showOnboarding: Bool
     @Published var reviewingOnboarding = false
 
-    @Published var fullSpeedPreload: Bool {
-        didSet { defaults.set(fullSpeedPreload, forKey: "fullSpeedPreload") }
-    }
-    @Published var photoPreloadCount: Int {
-        didSet { defaults.set(photoPreloadCount, forKey: "photoPreloadCount") }
-    }
-    @Published var videoPreloadCount: Int {
-        didSet { defaults.set(videoPreloadCount, forKey: "videoPreloadCount") }
-    }
+    // Retain legacy keys for upgrades; only the four-mode policy drives preloading.
+    let fullSpeedPreload: Bool
+    let photoPreloadCount: Int
+    let videoPreloadCount: Int
+    @Published private(set) var preloadPreset: PreloadPreset
+    @Published var preloadEnvironment = PreloadEnvironment()
+    @Published private(set) var photoItemGrants: Set<String> = []
+    @Published private(set) var videoItemGrants: Set<String> = []
+    @Published private(set) var cloudPhotoPromptAssetID: String?
+    @Published private(set) var cloudPhotoPromptInPreview = false
+    private var photoItemsPrompted: Set<String> = []
+    private var videoItemsPrompted: Set<String> = []
+    private let pathMonitor = NWPathMonitor()
+    private var resourceObservers: [NSObjectProtocol] = []
+    private var monitoringResources = false
 
-    var canPreloadPhotoNetwork: Bool { canDownloadPhoto }
-    var canPreloadVideoNetwork: Bool { canDownloadVideo }
+    var effectivePreload: PreloadConfiguration { preloadPreset.configuration(in: preloadEnvironment) }
+    var canPreloadPhotoNetwork: Bool { canDownloadPhoto && preloadPreset.allowsBackgroundNetwork(in: preloadEnvironment) }
+    var canPreloadVideoNetwork: Bool { canDownloadVideo && preloadPreset.allowsBackgroundNetwork(in: preloadEnvironment) }
+    func canDownloadPhoto(for assetID: String) -> Bool { canDownloadPhoto || photoItemGrants.contains(assetID) }
+    func canDownloadVideo(for assetID: String) -> Bool { canDownloadVideo || videoItemGrants.contains(assetID) }
 
-    var preloadPreset: PreloadPreset {
-        PreloadPreset.matching(.init(photos: photoPreloadCount, videos: videoPreloadCount, fullSpeed: fullSpeedPreload))
-    }
     func applyPreloadPreset(_ preset: PreloadPreset) {
-        guard let value = preset.configuration else { return }
-        photoPreloadCount = value.photos
-        videoPreloadCount = value.videos
-        fullSpeedPreload = value.fullSpeed
+        guard preset != preloadPreset else { return }
+        preloadPreset = preset
+        defaults.set(preset.rawValue, forKey: "preload.mode.v3")
+        photoItemGrants.removeAll(); videoItemGrants.removeAll()
+        photoItemsPrompted.removeAll(); videoItemsPrompted.removeAll()
+        cloudPhotoSessionAllowed = false; cloudSessionAllowed = false
+        cloudPhotoPromptHandled = false; cloudPromptHandled = false
+        showCloudPhotoPrompt = false; cloudPhotoPromptAssetID = nil
+    }
+
+    func startResourceMonitoring() {
+        guard !monitoringResources else { return }
+        monitoringResources = true
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        preloadEnvironment.connected = false
+        refreshPowerState()
+        for name in [UIDevice.batteryLevelDidChangeNotification, UIDevice.batteryStateDidChangeNotification,
+                     Notification.Name.NSProcessInfoPowerStateDidChange, ProcessInfo.thermalStateDidChangeNotification] {
+            resourceObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refreshPowerState() }
+            })
+        }
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let connected = path.status == .satisfied
+            let expensive = path.isExpensive, constrained = path.isConstrained
+            Task { @MainActor in
+                guard let self else { return }
+                var state = self.preloadEnvironment
+                state.connected = connected; state.expensive = expensive; state.constrained = constrained
+                self.preloadEnvironment = state
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "ChaiPhoto.preload-network"))
+    }
+    private func refreshPowerState() {
+        var state = preloadEnvironment
+        let device = UIDevice.current
+        state.charging = device.batteryState == .charging || device.batteryState == .full
+        state.lowBattery = !state.charging && device.batteryLevel >= 0 && device.batteryLevel <= 0.2
+        state.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        state.thermallyLimited = ProcessInfo.processInfo.thermalState == .serious || ProcessInfo.processInfo.thermalState == .critical
+        preloadEnvironment = state
+    }
+    deinit {
+        pathMonitor.cancel()
+        for observer in resourceObservers { NotificationCenter.default.removeObserver(observer) }
     }
 
     @Published var textSize: String { didSet { defaults.set(textSize, forKey: "textSize") } }
@@ -83,6 +132,8 @@ final class AppSettings: ObservableObject {
         fullSpeedPreload = d.bool(forKey: "fullSpeedPreload")
         photoPreloadCount = max(1, d.integer(forKey: "photoPreloadCount"))
         videoPreloadCount = max(0, d.integer(forKey: "videoPreloadCount"))
+        preloadPreset = d.string(forKey: "preload.mode.v3").flatMap(PreloadPreset.init(rawValue:)) ??
+            PreloadPreset.migrated(fullSpeed: fullSpeedPreload, photos: photoPreloadCount, videos: videoPreloadCount)
         textSize = d.string(forKey: "textSize") ?? "system"
         language = d.string(forKey: "language") ?? "zh-Hant"
         appearance = d.string(forKey: "appearance") ?? "system"
@@ -95,20 +146,42 @@ final class AppSettings: ObservableObject {
     }
     var colorScheme: ColorScheme? { appearance == "dark" ? .dark : appearance == "light" ? .light : nil }
 
-    func requestCloudPhotoDownloadPermission() {
-        guard !canDownloadPhoto, !cloudPhotoPromptHandled else { return }
+    func requestCloudPhotoDownloadPermission(for assetID: String, inPreview: Bool = false, retry: Bool = false) {
+        guard !canDownloadPhoto(for: assetID), !showCloudPhotoPrompt else { return }
+        if !retry {
+            if preloadPreset == .off { guard !photoItemsPrompted.contains(assetID) else { return } }
+            else { guard !cloudPhotoPromptHandled else { return } }
+        }
+        photoItemsPrompted.insert(assetID)
         cloudPhotoPromptHandled = true
+        cloudPhotoPromptAssetID = assetID
+        cloudPhotoPromptInPreview = inPreview
         showCloudPhotoPrompt = true
     }
-
+    func allowCloudPhotoItem() {
+        if let id = cloudPhotoPromptAssetID { photoItemGrants.insert(id) }
+        showCloudPhotoPrompt = false
+        cloudPhotoPromptAssetID = nil
+    }
     func allowCloudPhotosThisSession() {
+        if preloadPreset == .off { allowCloudPhotoItem(); return }
         cloudPhotoSessionAllowed = true
         showCloudPhotoPrompt = false
+        cloudPhotoPromptAssetID = nil
     }
-
     func declineCloudPhotosForNow() {
         showCloudPhotoPrompt = false
+        cloudPhotoPromptAssetID = nil
     }
+    func shouldPromptCloudVideo(for assetID: String) -> Bool {
+        guard !canDownloadVideo(for: assetID) else { return false }
+        if preloadPreset == .off { guard !videoItemsPrompted.contains(assetID) else { return false } }
+        else { guard !cloudPromptHandled else { return false } }
+        videoItemsPrompted.insert(assetID)
+        cloudPromptHandled = true
+        return true
+    }
+    func allowCloudVideoItem(_ assetID: String) { videoItemGrants.insert(assetID) }
 
     func successFeedback() { if haptics { UINotificationFeedbackGenerator().notificationOccurred(.success) } }
 
@@ -222,9 +295,10 @@ struct SettingsView: View {
             "Haptics: \(settings.haptics ? "enabled" : "disabled")",
             "Cloud-Photo: \(cloudPhoto)",
             "Cloud-Video: \(cloudVideo)",
-            "Photo-Preload: \(settings.photoPreloadCount)",
-            "Video-Preload: \(settings.videoPreloadCount)",
-            "Full-Speed-Preload: \(settings.fullSpeedPreload ? "enabled" : "disabled")",
+            "Preload-Mode: \(settings.preloadPreset.rawValue)",
+            "Photo-Preload: \(settings.effectivePreload.photos)",
+            "Video-Preload: \(settings.effectivePreload.videos)",
+            "Full-Speed-Preload: \(settings.effectivePreload.fullSpeed ? "enabled" : "disabled")",
             "Low-Power-Mode: \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "enabled" : "disabled")"
         ].joined(separator: "\n")
     }
@@ -273,58 +347,20 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                     }
                 case .media:
+                    Section(L("預載效能", "Preload performance")) {
+                        PreloadPresetPicker()
+                    }
                     Section(L("照片", "Photos")) {
-                        Toggle(L("始終允許下載 iCloud 照片", "Always allow iCloud photo downloads"), isOn: $settings.allowCloudPhoto)
-                        Text(L("關閉時，偵測到照片只在 iCloud 會詢問是否僅在本次使用期間下載。", "When disabled, the app asks once per session when a photo needs to be downloaded from iCloud."))
+                        Toggle(L("始終允許下載 iCloud 照片", "Always allow iCloud photo downloads"), isOn: $settings.allowCloudPhoto).disabled(settings.preloadPreset == .off)
+                        Text(L("預載關閉時，此允許暫不套用，雲端照片會逐張詢問。", "With preloading off, this permission is suspended; each cloud photo asks separately."))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Section(L("影片", "Video")) {
-                        Toggle(L("始終允許下載 iCloud 影片", "Always allow iCloud video downloads"), isOn: $settings.allowCloudVideo)
+                        Toggle(L("始終允許下載 iCloud 影片", "Always allow iCloud video downloads"), isOn: $settings.allowCloudVideo).disabled(settings.preloadPreset == .off)
                         Toggle(L("自動播放", "Autoplay"), isOn: $settings.autoplay)
                         Toggle(L("預設靜音", "Mute by default"), isOn: $settings.muted)
                         Text(L("影片雙擊中間會直接切換 iOS 系統的喜好項目。", "Double-tapping the center of a video toggles the iOS system Favorite state."))
                             .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Section(L("預載效能", "Preload performance")) {
-                        PreloadPresetPicker()
-                    }
-                    Section(L("進階效能", "Advanced performance")) {
-                        DisclosureGroup(
-                            L("預載設定", "Preloading settings")
-                        ) {
-                            Toggle(
-                                L("全速預載", "Full-speed preloading"),
-                                isOn: $settings.fullSpeedPreload
-                            )
-
-                            Picker(
-                                L("照片預載數量", "Photos to preload"),
-                                selection: $settings.photoPreloadCount
-                            ) {
-                                Text("1").tag(1)
-                                Text("3").tag(3)
-                                Text("5").tag(5)
-                                Text("8").tag(8)
-                            }
-
-                            Picker(
-                                L("影片預載數量", "Videos to preload"),
-                                selection: $settings.videoPreloadCount
-                            ) {
-                                Text("0").tag(0)
-                                Text("1").tag(1)
-                                Text("2").tag(2)
-                                Text("3").tag(3)
-                                Text("4").tag(4)
-                            }
-
-                            Text(L(
-                                "全速預載會準備較大縮圖，增加電量與快取；下載始終遵守照片／影片各自的允許設定。關閉時仍優先預載本機內容。",
-                                "Full-speed preloading prepares larger thumbnails and uses more battery and cache. Downloads always require separate photo/video permission. Local content is prioritized in every mode."
-                            ))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
                     }
                 case .support:
 #if CHAIPHOTO_APPSTORE

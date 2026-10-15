@@ -31,7 +31,7 @@ struct ChaiPhotoApp: App {
                 .preferredColorScheme(settings.colorScheme)
                 .dynamicTypeSize(settings.textSize == "system" ? systemTextSize : settings.textSize == "large" ? .xLarge : settings.textSize == "extra" ? .xxxLarge : .large)
                 .environment(\.locale, Locale(identifier: settings.language))
-                .task { await library.requestCurrentStatus() }
+                .task { settings.startResourceMonitoring(); await library.requestCurrentStatus() }
                 .onChange(of: scenePhase) { _, value in
                     if value == .active && wasInBackground {
                         wasInBackground = false

@@ -17,7 +17,7 @@ enum OnboardingPolicy {
     }
 
     static func page(_ defaults: UserDefaults) -> Int {
-        min(4, max(0, defaults.integer(forKey: pageKey)))
+        min(2, max(0, defaults.integer(forKey: pageKey)))
     }
 
     static func complete(_ defaults: UserDefaults) {
@@ -39,19 +39,40 @@ struct PreloadConfiguration: Equatable {
     let fullSpeed: Bool
 }
 
+struct PreloadEnvironment: Equatable {
+    var connected = true
+    var expensive = false
+    var constrained = false
+    var lowPower = false
+    var lowBattery = false
+    var charging = false
+    var thermallyLimited = false
+}
+
 enum PreloadPreset: String, CaseIterable, Identifiable {
-    case economy, balanced, aggressive, custom
+    case off, economy, balanced, aggressive
     var id: String { rawValue }
-    var configuration: PreloadConfiguration? {
+    var configuration: PreloadConfiguration { configuration(in: PreloadEnvironment()) }
+    func configuration(in environment: PreloadEnvironment) -> PreloadConfiguration {
         switch self {
+        case .off: return .init(photos: 0, videos: 0, fullSpeed: false)
         case .economy: return .init(photos: 1, videos: 0, fullSpeed: false)
-        case .balanced: return .init(photos: 3, videos: 2, fullSpeed: false)
-        case .aggressive: return .init(photos: 5, videos: 3, fullSpeed: true)
-        case .custom: return nil
+        case .aggressive: return .init(photos: 8, videos: 4, fullSpeed: true)
+        case .balanced:
+            if environment.thermallyLimited { return .init(photos: 0, videos: 0, fullSpeed: false) }
+            if environment.lowPower || environment.lowBattery || environment.expensive || environment.constrained || !environment.connected {
+                return .init(photos: 1, videos: 0, fullSpeed: false)
+            }
+            return .init(photos: environment.charging ? 5 : 3, videos: environment.charging ? 3 : 2, fullSpeed: false)
         }
     }
-    static func matching(_ value: PreloadConfiguration) -> Self {
-        allCases.first { $0.configuration == value } ?? .custom
+    func allowsBackgroundNetwork(in environment: PreloadEnvironment) -> Bool {
+        guard self != .off, environment.connected, !environment.constrained else { return false }
+        return self != .balanced || !(environment.expensive || environment.lowPower || environment.lowBattery || environment.thermallyLimited)
+    }
+    static func migrated(fullSpeed: Bool, photos: Int, videos: Int) -> Self {
+        if fullSpeed { return .aggressive }
+        return photos <= 1 && videos == 0 ? .economy : .balanced
     }
 }
 

@@ -74,15 +74,20 @@ struct ContentView: View {
             Button(L("好", "OK")) { library.message = nil }
         } message: { Text(library.message ?? "") }
         .alert(L("允許載入 iCloud 照片？", "Allow iCloud photo downloads?"), isPresented: Binding(
-            get: { !settings.showOnboarding && !settings.reviewingOnboarding && scenePhase == .active && settings.showCloudPhotoPrompt },
+            get: { !settings.showOnboarding && !settings.reviewingOnboarding && scenePhase == .active && !settings.cloudPhotoPromptInPreview && settings.showCloudPhotoPrompt },
             set: { settings.showCloudPhotoPrompt = $0 }
         )) {
             Button(L("暫不載入", "Not now"), role: .cancel) { settings.declineCloudPhotosForNow() }
-            Button(L("本次允許", "Allow this session")) { settings.allowCloudPhotosThisSession() }
-            Button(L("始終允許", "Always allow")) { settings.allowCloudPhoto = true }
+            if settings.preloadPreset == .off {
+                Button(L("只下載這張", "Download this photo")) { settings.allowCloudPhotoItem() }
+            } else {
+                Button(L("本次允許", "Allow this session")) { settings.allowCloudPhotosThisSession() }
+                Button(L("始終允許", "Always allow")) { settings.allowCloudPhoto = true }
+            }
         } message: {
-            Text(L("允許後，本次開啟 App 期間可以下載 iCloud 照片；完全關閉後失效，可能使用行動數據。",
-                   "Allow iCloud photo downloads for this app session. Permission expires after closing the app and may use cellular data."))
+            Text(settings.preloadPreset == .off
+                 ? L("只下載這張照片。可到設定更改預載模式。", "Download this photo only. Change preloading in Settings.")
+                 : L("允許此期間下載 iCloud 照片，可能使用行動數據。可到設定更改預載模式。", "Allow iCloud photos this session; cellular data may be used. Change preloading in Settings."))
         }
     }
 }
@@ -91,17 +96,10 @@ struct AccessView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
     var body: some View {
-        ContentUnavailableView {
-            Label(L("一起整理相簿", "Organize your library"), systemImage: "photo.stack")
-        } description: {
-            Text(L("授權後即可整理。滑動只做標記，待刪頁確認後才會刪除。", "Allow access to organize media. Swipes only mark items; deletion happens after review and system confirmation."))
-        } actions: {
-            if library.authorization == .notDetermined {
-                Button(L("選擇相簿權限", "Allow photo access")) { Task { await library.requestAccess() } }.buttonStyle(.borderedProminent)
-            } else {
-                Button(L("開啟設定", "Open Settings")) { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) }.buttonStyle(.borderedProminent)
-            }
-        }
+        VStack(spacing: 20) {
+            Image(systemName: "photo.stack").font(.largeTitle).foregroundStyle(.indigo)
+            PhotoAccessStatusView()
+        }.padding(24)
     }
 }
 
@@ -154,7 +152,7 @@ struct SortView: View {
     private var preloadScanCount: Int {
         max(
             12,
-            (settings.photoPreloadCount + settings.videoPreloadCount) * 4
+            (settings.effectivePreload.photos + settings.effectivePreload.videos) * 4
         )
     }
 
@@ -165,9 +163,9 @@ struct SortView: View {
             .joined(separator: "|")
 
         let counts =
-            "pc:\(settings.photoPreloadCount)|vc:\(settings.videoPreloadCount)"
+            "pc:\(settings.effectivePreload.photos)|vc:\(settings.effectivePreload.videos)"
         let modes =
-            "fast:\(settings.fullSpeedPreload)" +
+            "fast:\(settings.effectivePreload.fullSpeed)" +
             "|pn:\(settings.canPreloadPhotoNetwork)" +
             "|vn:\(settings.canPreloadVideoNetwork)"
 
@@ -322,9 +320,9 @@ struct SortView: View {
             mediaPreloader.prepareNext(
                 preloadCandidates,
                 keepingCurrentID: currentAsset?.localIdentifier,
-                photoCount: settings.photoPreloadCount,
-                videoCount: settings.videoPreloadCount,
-                fullSpeed: settings.fullSpeedPreload,
+                photoCount: settings.effectivePreload.photos,
+                videoCount: settings.effectivePreload.videos,
+                fullSpeed: settings.effectivePreload.fullSpeed,
                 allowPhotoNetwork: settings.canPreloadPhotoNetwork,
                 allowVideoNetwork: settings.canPreloadVideoNetwork
             )
@@ -377,21 +375,7 @@ struct SortView: View {
     }
 
     private var limitedAccessRow: some View {
-        HStack {
-            Text(L("目前為部分照片權限", "Limited photo access"))
-                .font(.caption)
-
-            Spacer()
-
-            Button(L("管理權限", "Settings")) {
-                UIApplication.shared.open(
-                    URL(string: UIApplication.openSettingsURLString)!
-                )
-            }
-            .font(.caption)
-        }
-        .padding(.horizontal, 16)
-        .foregroundStyle(.orange)
+        PhotoAccessStatusView().font(.caption).padding(.horizontal, 16)
     }
 
     @ViewBuilder
@@ -629,7 +613,7 @@ struct SortView: View {
         shareGeneration = generation
         shareTask = Task {
             do {
-                let url = try await preparePhotoShare(asset, allowNetwork: settings.canDownloadPhoto)
+                let url = try await preparePhotoShare(asset, allowNetwork: settings.canDownloadPhoto(for: asset.localIdentifier))
                 guard !Task.isCancelled, generation == shareGeneration else {
                     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
                     return

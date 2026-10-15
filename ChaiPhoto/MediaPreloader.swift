@@ -56,6 +56,7 @@ final class MediaPreloader: ObservableObject {
         allowPhotoNetwork: Bool,
         allowVideoNetwork: Bool
     ) {
+        guard photoCount > 0 || videoCount > 0 else { clear(); return }
         let policy = [allowPhotoNetwork, allowVideoNetwork, fullSpeed]
         if networkPolicy != policy { clear(); networkPolicy = policy }
         photoMaxSide = fullSpeed ? 2560 : 1280

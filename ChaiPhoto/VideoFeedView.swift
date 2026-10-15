@@ -310,7 +310,7 @@ struct VideoFeedView: View {
         shareGeneration = generation
         shareTask = Task {
             do {
-                let url = try await prepareVideoShare(asset, allowNetwork: settings.canDownloadVideo)
+                let url = try await prepareVideoShare(asset, allowNetwork: settings.canDownloadVideo(for: asset.localIdentifier))
                 guard !Task.isCancelled, generation == shareGeneration else {
                     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
                     return

@@ -49,7 +49,28 @@ struct ExperiencePolicyRegression {
         }
         expect(PreloadPreset.balanced.configuration == .init(photos: 3, videos: 2, fullSpeed: false), "safe defaults")
         expect(PreloadPreset.economy.configuration == .init(photos: 1, videos: 0, fullSpeed: false), "economy disables video preload")
-        expect(PreloadPreset.matching(.init(photos: 8, videos: 4, fullSpeed: true)) == .custom, "custom values preserved")
+        expect(PreloadPreset.migrated(fullSpeed: true, photos: 8, videos: 4) == .aggressive, "legacy maximum migrates without rewriting preferences")
+        expect(PreloadPreset.allCases.count == 4, "only four modes")
+        expect(PreloadPreset.off.configuration == .init(photos: 0, videos: 0, fullSpeed: false), "off makes no preload requests")
+        expect(PreloadPreset.aggressive.configuration == .init(photos: 8, videos: 4, fullSpeed: true), "aggressive is bounded maximum")
+        expect(PreloadPreset.balanced.configuration(in: .init(charging: true)).photos == 5, "charging on normal network increases balanced preparation")
+        for state in [PreloadEnvironment(expensive: true), .init(constrained: true), .init(lowPower: true), .init(lowBattery: true), .init(connected: false)] {
+            expect(PreloadPreset.balanced.configuration(in: state) == .init(photos: 1, videos: 0, fullSpeed: false), "balanced reduces resource use")
+            expect(!PreloadPreset.balanced.allowsBackgroundNetwork(in: state), "balanced suppresses extra cloud transfers")
+        }
+        expect(PreloadPreset.balanced.configuration(in: .init(thermallyLimited: true)).photos == 0, "thermal pressure cancels balanced preloading")
+        for connected in [false, true] {
+            for constrained in [false, true] {
+                for mode in PreloadPreset.allCases {
+                    let state = PreloadEnvironment(connected: connected, constrained: constrained)
+                    let config = mode.configuration(in: state)
+                    expect((0...8).contains(config.photos) && (0...4).contains(config.videos), "all modes stay bounded")
+                    if mode == .off || !connected || constrained {
+                        expect(!mode.allowsBackgroundNetwork(in: state), "off, offline or low-data mode never preloads from network")
+                    }
+                }
+            }
+        }
         expect(ReleaseVersion("1.2.10")! > ReleaseVersion("1.2.9")!, "numeric version ordering")
         expect(ReleaseVersion("1.2") == ReleaseVersion("1.2.0"), "equivalent versions")
         for invalid in ["", "1..2", "1.2.3.4", "-1.2", "1.2.beta", "１.２"] {

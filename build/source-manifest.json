@@ -2,21 +2,21 @@
   "schema": 1,
   "files": {
     "ChaiPhoto/AlbumPickerView.swift": "ffe311904bd94251eb38e5a4d8364e1a97ebcb9ec4db670bf54d9d5351adbbbd",
-    "ChaiPhoto/AppExperiencePolicy.swift": "b30a2dccb2f07b0948db875d6a08193634fe2b40df83ee91ed63785b740917fb",
-    "ChaiPhoto/AppSettings.swift": "5a80562edbde3b5dda6434cdf3846aafd1b47f0afb53e04664655ec8349edb11",
+    "ChaiPhoto/AppExperiencePolicy.swift": "bc29d00e1d59b5a3a08aaf31c386177e3ad61579eb260f639bcf1eb216a8948b",
+    "ChaiPhoto/AppSettings.swift": "45e0c369a02ecd5fc07c77409499faca40d3fec3426964456f1e7a5c8e62a9f4",
     "ChaiPhoto/AppUpdateManager.swift": "b114087fa252da612610e9bfe022b595150f172b615c735ed01521cb7e7565c2",
-    "ChaiPhoto/AssetImage.swift": "f1b5a4027f7f5f9af280aae72db6b5ecc628371ee00d7111efe2609f1052bd45",
+    "ChaiPhoto/AssetImage.swift": "53e50f3a1e9ec48f25599855fece2e5c9bbcaf944600b65c7de83086ed4bf58d",
     "ChaiPhoto/Assets.xcassets/AppIcon.appiconset/AppIcon.png": "4b78b0501751b1d5a05d49a36a240218fc96ceaa829f1790a584f340425778e0",
     "ChaiPhoto/Assets.xcassets/AppIcon.appiconset/Contents.json": "1b2cc6b6e1ad340faeaae5f07d292eb20c7a22c9995ac8795ea6aa604efa491d",
     "ChaiPhoto/Assets.xcassets/Contents.json": "10e3b5dc202f1cd9fad1f688c8fc9fe9e9669bf3f8295e67d216b10fd99b6f49",
-    "ChaiPhoto/ChaiPhotoApp.swift": "2dd6b73bb1be42731f6d20b4c235a0d60857559e34d92b108b7954615707f88d",
-    "ChaiPhoto/ContentView.swift": "75c7531e9503c395f0d41a7ccb0a3e4bbd4d5244ad54a9fd91c4fe61a49bd864",
+    "ChaiPhoto/ChaiPhotoApp.swift": "3bf2d8125868f0ab91323fbbddb45edccf3316445f4e2ff8aa3aae73ac9c57d9",
+    "ChaiPhoto/ContentView.swift": "535d88763ddb312a1050556bbe836bada479167a50a75fdca38fc15951c76a0f",
     "ChaiPhoto/Info.plist": "a5442921ce386384db82c75dd04d05638397d183d0e2232691b28170d5a47718",
     "ChaiPhoto/InteractionTutorialView.swift": "0d986488a768f8a7d8a271dc88c867d6c09e030389f68de7482462629cca21a2",
     "ChaiPhoto/MediaFilter.swift": "0b317d35caee1136b524eac290998fdefe233bbea70c678ab2996d8f130c8575",
-    "ChaiPhoto/MediaPreloader.swift": "33d72ef8eff18dc52f0707825215daf3587d1d27f52f2f690f2519943a3c87cd",
+    "ChaiPhoto/MediaPreloader.swift": "399029cc00d8f4f8da2026ceb3f5bc644e8dbbbcd021e48db7b671bec80ad8a8",
     "ChaiPhoto/MediaServices.swift": "a7de448254cb4f5bcd6521666ccf0c6396a4fc32e4966f571e3a1bb789a6039a",
-    "ChaiPhoto/NativePhotoZoom.swift": "67214e552e862bcfd8b4a8a7914e27c651479490a5250d47f239e43b19d8054d",
+    "ChaiPhoto/NativePhotoZoom.swift": "ac513dcf773cd975796cc16e169cb109ee5f08f9e5c8bfc4de5d58cc4320445b",
     "ChaiPhoto/PhotoGestureSurface.swift": "e4435470226d0fb96c23c7989d7d03a55b6ca51a2b22dcc7af9b3815e3439fc0",
     "ChaiPhoto/PhotoLibraryStore.swift": "39df16ba0e153b2a4c1d751f1090be8dc218a1fc9d3e92dd7b91f585261bdd26",
     "ChaiPhoto/PlayerSurface.swift": "92c12e60e4181c672cbcbb7e5e309648af4fc6df0c3824cd1b33caf4dedfbb6f",
@@ -24,7 +24,7 @@
     "ChaiPhoto/ReviewQueueOrdering.swift": "f89e7ac1846f82021da99b1edb2fecf724745898560c5b9274895a8e8c46fdc1",
     "ChaiPhoto/ReviewView.swift": "6264922256c7975fd092669829fb93289f32223d9f724252e96bd4324eccf8f2",
     "ChaiPhoto/SortCompletionView.swift": "911996ef0522c158745ace4f9d57bb1b4c8c5d4097d0772e47996cea2b216c3c",
-    "ChaiPhoto/VideoFeedView.swift": "f5a7e2bc95812900187b439c98640897e333b649b16506702f210b4070348199",
-    "ChaiPhoto/WelcomeGuide.swift": "b86ed37ba85c38914b89884ef7f30b97331f0155eb9c5145906957e2f7043535"
+    "ChaiPhoto/VideoFeedView.swift": "974777717394d3dc23e49d8e5a5f9d2b88379452b91d6e3cbbd822af49bee165",
+    "ChaiPhoto/WelcomeGuide.swift": "2f619fde3030951a41f041fa5748a91b40f3489c74d9c1544633b04817afbfb2"
   }
 }

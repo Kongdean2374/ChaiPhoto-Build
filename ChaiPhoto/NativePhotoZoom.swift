@@ -4,17 +4,20 @@ import Photos
 /// UIScrollView supplies native pinch, pan, inertia and double-tap zoom.
 struct NativePhotoZoom: UIViewRepresentable {
     let asset: PHAsset
+    var onCloudUnavailable: (() -> Void)? = nil
     @EnvironmentObject private var settings: AppSettings
 
     func makeUIView(context: Context) -> PhotoZoomScrollView {
         let view = PhotoZoomScrollView()
-        view.load(asset, allowNetwork: settings.canDownloadPhoto)
+        view.onCloudUnavailable = onCloudUnavailable
+        view.load(asset, allowNetwork: settings.canDownloadPhoto(for: asset.localIdentifier))
         return view
     }
 
     func updateUIView(_ view: PhotoZoomScrollView, context: Context) {
-        if view.assetID != asset.localIdentifier || view.allowNetwork != settings.canDownloadPhoto {
-            view.load(asset, allowNetwork: settings.canDownloadPhoto)
+        view.onCloudUnavailable = onCloudUnavailable
+        if view.assetID != asset.localIdentifier || view.allowNetwork != settings.canDownloadPhoto(for: asset.localIdentifier) {
+            view.load(asset, allowNetwork: settings.canDownloadPhoto(for: asset.localIdentifier))
         }
     }
 
@@ -27,6 +30,7 @@ final class PhotoZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private let spinner = UIActivityIndicatorView(style: .large)
     var assetID = ""
     var allowNetwork = false
+    var onCloudUnavailable: (() -> Void)?
     private var request: PHImageRequestID?
     private var generation = UUID()
     private var priorSize = CGSize.zero
@@ -82,6 +86,9 @@ final class PhotoZoomScrollView: UIScrollView, UIScrollViewDelegate {
             DispatchQueue.main.async {
                 guard let self, self.generation == token else { return }
                 if info?[PHImageCancelledKey] as? Bool == true { return }
+                if !allowNetwork && info?[PHImageResultIsInCloudKey] as? Bool == true {
+                    self.onCloudUnavailable?()
+                }
                 guard let image else {
                     if info?[PHImageResultIsDegradedKey] as? Bool != true {
                         self.spinner.stopAnimating()
