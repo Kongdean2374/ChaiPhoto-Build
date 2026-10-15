@@ -35,11 +35,13 @@
     "build/toolchain.json",
     "project.yml",
     "scripts/build_unsigned.sh",
+    "scripts/delivery_diagnostics.py",
     "scripts/install_toolchain.sh",
     "scripts/release_preflight.py",
     "scripts/resolve_version.py",
     "scripts/sign_upload.sh",
     "scripts/validate_release.py",
-    "scripts/verify_public_tree.py"
+    "scripts/verify_public_tree.py",
+    "tests/test_delivery_diagnostics.py"
   ]
 }

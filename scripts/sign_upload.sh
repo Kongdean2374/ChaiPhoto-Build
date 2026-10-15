@@ -24,7 +24,7 @@ cleanup() {
   [ -z "$LEGACY_PROFILE_INSTALLED_PATH" ] || rm -f "$LEGACY_PROFILE_INSTALLED_PATH"
   rm -rf "$SIGN_DIR"
   if [ "$result" -ne 0 ]; then
-    echo "::error::Signed delivery failed during: $STAGE. Raw signing logs are not published."
+    echo "::error::Signed delivery failed during: $STAGE (exit=$result). Raw signing logs are not published."
   fi
   exit "$result"
 }
@@ -37,10 +37,15 @@ for name in APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNE
     exit 1
   fi
 done
+if [[ ! "$APP_STORE_CONNECT_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+  echo "::error::App Store Connect key identifier has an invalid format."
+  exit 1
+fi
 python3 scripts/resolve_version.py
 xcodegen generate
 python3 scripts/verify_public_tree.py --project
-KEY_PATH="$SIGN_DIR/AuthKey.p8"
+# Match the key filename used by the existing successful delivery workflow.
+KEY_PATH="$SIGN_DIR/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
 printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$KEY_PATH"
 printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 -D > "$SIGN_DIR/distribution.p12"
 printf '%s' "$PROVISIONING_PROFILE_BASE64" | base64 -D > "$SIGN_DIR/profile.mobileprovision"
@@ -94,11 +99,18 @@ case "$RELEASE_FLAVOR" in
   *) exit 1;;
 esac
 STAGE="signed device archive"
-xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhoto -configuration "$CONFIG" \
+if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhoto -configuration "$CONFIG" \
   -destination 'generic/platform=iOS' -archivePath "$SIGN_DIR/ChaiPhoto.xcarchive" \
   DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-  OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" archive > "$SIGN_DIR/archive.log" 2>&1
+  OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" archive > "$SIGN_DIR/archive.log" 2>&1; then
+  echo "Delivery stage archive completed (exit=0)."
+else
+  result=$?
+  python3 scripts/delivery_diagnostics.py --stage archive --exit-code "$result" \
+    --log "$SIGN_DIR/archive.log" || echo "::error::Safe archive diagnostic unavailable."
+  exit "$result"
+fi
 APP="$SIGN_DIR/ChaiPhoto.xcarchive/Products/Applications/ChaiPhoto.app"
 STAGE="archive metadata and flavor validation"
 python3 scripts/validate_release.py "$APP" --flavor "$RELEASE_FLAVOR"
@@ -114,10 +126,18 @@ with open(os.environ["EXPORT_PLIST"], "wb") as f:
     }, f)
 PY
 STAGE="App Store Connect upload"
-xcodebuild -exportArchive -archivePath "$SIGN_DIR/ChaiPhoto.xcarchive" \
+echo "Delivery stage export-upload started (manual signing; fixed build number)."
+if xcodebuild -exportArchive -archivePath "$SIGN_DIR/ChaiPhoto.xcarchive" \
   -exportOptionsPlist "$SIGN_DIR/ExportOptions.plist" -exportPath "$SIGN_DIR/export" \
   -authenticationKeyPath "$KEY_PATH" -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
-  -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" > "$SIGN_DIR/upload.log" 2>&1
+  -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" > "$SIGN_DIR/upload.log" 2>&1; then
+  echo "Delivery stage export-upload completed (exit=0)."
+else
+  result=$?
+  python3 scripts/delivery_diagnostics.py --stage export-upload --exit-code "$result" \
+    --log "$SIGN_DIR/upload.log" || echo "::error::Safe export/upload diagnostic unavailable."
+  exit "$result"
+fi
 echo "Apple upload command completed. Processing, testing availability, review and release require Apple confirmation."
 {
   echo "ChaiPhoto $RELEASE_FLAVOR upload command completed."

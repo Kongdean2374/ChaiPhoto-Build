@@ -102,3 +102,28 @@ App policies: https://photo.chaihome.cc/privacy and https://photo.chaihome.cc/te
 Runner policy: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
 Release limits: https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
 Environment protection: https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
+
+## Delivery failures and retries
+
+The API key file uses the conventional AuthKey_<Key ID>.p8 filename. Export keeps
+app-store-connect, destination=upload, manual signing, the existing distribution
+identity/profile and manageAppVersionAndBuildNumber=false. No automatic signing
+repair or certificate creation is enabled.
+
+On archive or export/upload failure, the workflow preserves the original exit code
+and prints a structured summary containing only the stage, exit code, ITMS codes,
+allowlisted NSError domain/code pairs, HTTP error statuses and fixed diagnostic
+signals. Signals are hints, not a confirmed root cause. Raw message excerpts,
+UserInfo, URLs, paths, identifiers, credentials and original log files are never
+published. Unknown errors may have empty code lists. Logs remain temporary and
+are deleted by the signing cleanup trap; no log artifact is uploaded.
+
+An export/upload exit code alone does not prove Apple rejected or never received
+the binary. Before a new manually authorized attempt, check TestFlight Build Uploads
+and processing status, confirm the newest build sequence, and reserve a fresh
+explicit build number. The workflow does not retry uploads or reuse build numbers
+automatically. Do not rerun a historical job: dispatch the updated main SHA and
+your newly confirmed number. TestFlight retains the even-number policy.
+
+Apple upload methods: https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/
+Apple delivery status: https://developer.apple.com/help/app-store-connect/manage-builds/view-builds-and-metadata/
