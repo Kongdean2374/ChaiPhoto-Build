@@ -24,11 +24,25 @@ and provisioning. Release assets and this source are publicly downloadable.
 
 ## Versions
 
-Marketing version remains 1.2.5. Enter an explicit positive build number from 1 to
+Marketing version is 1.2.6. The owner confirmed 1.2.5 is already approved; raising
+only a build number cannot reopen that approved version's upload train.
+Enter an explicit positive build number from 1 to
 9999; this conservative project limit is not a claim about all Apple formats.
 TestFlight uses even numbers; App Store uses odd numbers. Neither Apple workflow
 uses the repository run number. Check the existing Apple build sequence and reserve
-a number before dispatch. The workflows also check Apple metadata before uploading.
+a number before dispatch. Read-only Apple API checks verify the latest approved
+iOS marketing version and the build sequence before certificate import or compilation.
+The marketing version must exceed every approved/released version, including versions
+pending release or removed from distribution. Unknown states, incomplete metadata,
+inaccessible APIs or pagination limits stop delivery. Both current and legacy Apple
+state field names are supported. The checks cannot guarantee final Apple validation
+or prevent cross-repository races.
+
+The next proposed TestFlight combination is 1.2.6 (58), subject to live preflight
+confirming the version is still eligible and 58 exceeds all existing Apple builds.
+Enter 58 manually; the repository build setting remains a placeholder overwritten
+by the validated input, and no upload is automatically started.
+
 The concurrency lock is shared between the two Apple workflows only within this
 repository. Never deliver from the private and public repositories at the same time.
 Cross-repository Apple fallback remains unverified; private workflow changes require
