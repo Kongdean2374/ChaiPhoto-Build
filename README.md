@@ -18,6 +18,7 @@ schedule, tag or workflow_run delivery triggers.
 | Build Unsigned IPA | iPhoneOS ARM64 Beta-flavor IPA | No Apple credentials | Public Release, checksum and build summary |
 | Upload TestFlight | Manual signed upload | testflight environment | Apple only |
 | Upload App Store | Production-flavor signed upload | appstore environment | Apple only |
+| Validate Reviewed Snapshot | Both unsigned iPhoneOS flavors, XCTest and lifecycle UI tests | No Apple credentials | No release or artifact |
 
 Unsigned IPA files cannot be installed directly. Downloaders supply their own signing
 and provisioning. Release assets and this source are publicly downloadable.
@@ -38,10 +39,11 @@ inaccessible APIs or pagination limits stop delivery. Both current and legacy Ap
 state field names are supported. The checks cannot guarantee final Apple validation
 or prevent cross-repository races.
 
-The next proposed TestFlight combination is 1.2.6 (58), subject to live preflight
-confirming the version is still eligible and 58 exceeds all existing Apple builds.
-Enter 58 manually; the repository build setting remains a placeholder overwritten
-by the validated input, and no upload is automatically started.
+The owner reports 1.2.6 (58) is already in TestFlight. Never reuse 58.
+The next candidate is 1.2.6 (60), subject to a fresh Apple check. Choose an unused
+even build above the highest existing build if 60 is no longer available.
+No number is reserved by source changes or validation builds. The repository build
+setting remains a placeholder; an Apple upload requires separate owner authorization.
 
 The concurrency lock is shared between the two Apple workflows only within this
 repository. Never deliver from the private and public repositories at the same time.
@@ -83,6 +85,19 @@ delivery. After confirming TestFlight availability, update the existing website
 through the established authorized process. No feedback or website token is held here.
 
 ## Local build and snapshot updates
+
+This 1.2.6 snapshot starts each new process in Sort and keeps the current tab when
+returning from the background. Fresh installs get a resumable five-step setup;
+existing preferences and sorting progress are preserved. Preload intensity never
+grants iCloud download permission. Beta updates use the existing Beta API;
+App Store updates use Apple's public Lookup with app identity and link validation.
+
+The manual validation workflow compiles both Release-TestFlight and Release-AppStore
+for iPhoneOS without signing, then runs synthetic XCTest and simulator lifecycle
+tests for both configurations. It uses a standard macos-26 runner, no environment
+secrets, uploads, persisted artifacts, dependency caches or automatic retries.
+Physical iCloud, photo permissions, large text and real upgrade data still require
+device verification; passing synthetic tests does not certify those scenarios.
 
 Install the approved Xcode and XcodeGen versions listed in build/toolchain.json.
 Set RELEASE_BUILD_NUMBER and RELEASE_FLAVOR=unsigned, run the version resolver,

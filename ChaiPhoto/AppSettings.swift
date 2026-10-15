@@ -10,9 +10,10 @@ func L(_ zh: String, _ en: String) -> String {
 
 @MainActor
 final class AppSettings: ObservableObject {
+    private let defaults: UserDefaults
     @Published var allowCloudPhoto: Bool {
         didSet {
-            UserDefaults.standard.set(allowCloudPhoto, forKey: "allowCloudPhoto")
+            defaults.set(allowCloudPhoto, forKey: "allowCloudPhoto")
             cloudPhotoSessionAllowed = false
             cloudPhotoPromptHandled = false
             showCloudPhotoPrompt = false
@@ -21,38 +22,51 @@ final class AppSettings: ObservableObject {
     @Published var cloudPhotoSessionAllowed = false
     @Published var showCloudPhotoPrompt = false
     var cloudPhotoPromptHandled = false
-    var canDownloadPhoto: Bool { allowCloudPhoto || cloudPhotoSessionAllowed }
+    var canDownloadPhoto: Bool { DownloadPolicy.allowed(permanent: allowCloudPhoto, session: cloudPhotoSessionAllowed) }
 
-    @Published var allowCloudVideo: Bool { didSet { UserDefaults.standard.set(allowCloudVideo, forKey: "allowCloudVideo"); cloudSessionAllowed = false; cloudPromptHandled = false } }
+    @Published var allowCloudVideo: Bool { didSet { defaults.set(allowCloudVideo, forKey: "allowCloudVideo"); cloudSessionAllowed = false; cloudPromptHandled = false } }
     @Published var cloudSessionAllowed = false
     var cloudPromptHandled = false
-    var canDownloadVideo: Bool { allowCloudVideo || cloudSessionAllowed }
+    var canDownloadVideo: Bool { DownloadPolicy.allowed(permanent: allowCloudVideo, session: cloudSessionAllowed) }
+    @Published var showOnboarding: Bool
+    @Published var reviewingOnboarding = false
 
     @Published var fullSpeedPreload: Bool {
-        didSet { UserDefaults.standard.set(fullSpeedPreload, forKey: "fullSpeedPreload") }
+        didSet { defaults.set(fullSpeedPreload, forKey: "fullSpeedPreload") }
     }
     @Published var photoPreloadCount: Int {
-        didSet { UserDefaults.standard.set(photoPreloadCount, forKey: "photoPreloadCount") }
+        didSet { defaults.set(photoPreloadCount, forKey: "photoPreloadCount") }
     }
     @Published var videoPreloadCount: Int {
-        didSet { UserDefaults.standard.set(videoPreloadCount, forKey: "videoPreloadCount") }
+        didSet { defaults.set(videoPreloadCount, forKey: "videoPreloadCount") }
     }
 
-    var canPreloadPhotoNetwork: Bool { fullSpeedPreload || canDownloadPhoto }
-    var canPreloadVideoNetwork: Bool { fullSpeedPreload || canDownloadVideo }
+    var canPreloadPhotoNetwork: Bool { canDownloadPhoto }
+    var canPreloadVideoNetwork: Bool { canDownloadVideo }
 
-    @Published var textSize: String { didSet { UserDefaults.standard.set(textSize, forKey: "textSize") } }
-    @Published var language: String { didSet { UserDefaults.standard.set(language, forKey: "language") } }
-    @Published var appearance: String { didSet { UserDefaults.standard.set(appearance, forKey: "appearance") } }
-    @Published var deleteOnRight: Bool { didSet { UserDefaults.standard.set(deleteOnRight, forKey: "deleteOnRight") } }
-    @Published var autoplay: Bool { didSet { UserDefaults.standard.set(autoplay, forKey: "autoplay") } }
-    @Published var muted: Bool { didSet { UserDefaults.standard.set(muted, forKey: "muted") } }
-    @Published var haptics: Bool { didSet { UserDefaults.standard.set(haptics, forKey: "haptics") } }
-    @Published var autoEstimate: Bool { didSet { UserDefaults.standard.set(autoEstimate, forKey: "autoEstimate") } }
-    @Published var advanceAfterAlbumAction: Bool { didSet { UserDefaults.standard.set(advanceAfterAlbumAction, forKey: "advanceAfterAlbumAction") } }
-    @Published var favorites: Set<String> { didSet { UserDefaults.standard.set(Array(favorites), forKey: "videoFavorites") } }
-    init() {
-        let d = UserDefaults.standard
+    var preloadPreset: PreloadPreset {
+        PreloadPreset.matching(.init(photos: photoPreloadCount, videos: videoPreloadCount, fullSpeed: fullSpeedPreload))
+    }
+    func applyPreloadPreset(_ preset: PreloadPreset) {
+        guard let value = preset.configuration else { return }
+        photoPreloadCount = value.photos
+        videoPreloadCount = value.videos
+        fullSpeedPreload = value.fullSpeed
+    }
+
+    @Published var textSize: String { didSet { defaults.set(textSize, forKey: "textSize") } }
+    @Published var language: String { didSet { defaults.set(language, forKey: "language") } }
+    @Published var appearance: String { didSet { defaults.set(appearance, forKey: "appearance") } }
+    @Published var deleteOnRight: Bool { didSet { defaults.set(deleteOnRight, forKey: "deleteOnRight") } }
+    @Published var autoplay: Bool { didSet { defaults.set(autoplay, forKey: "autoplay") } }
+    @Published var muted: Bool { didSet { defaults.set(muted, forKey: "muted") } }
+    @Published var haptics: Bool { didSet { defaults.set(haptics, forKey: "haptics") } }
+    @Published var autoEstimate: Bool { didSet { defaults.set(autoEstimate, forKey: "autoEstimate") } }
+    @Published var advanceAfterAlbumAction: Bool { didSet { defaults.set(advanceAfterAlbumAction, forKey: "advanceAfterAlbumAction") } }
+    @Published var favorites: Set<String> { didSet { defaults.set(Array(favorites), forKey: "videoFavorites") } }
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let d = defaults
         d.register(defaults: [
             "language":"zh-Hant",
             "appearance":"system",
@@ -68,7 +82,7 @@ final class AppSettings: ObservableObject {
         allowCloudVideo = d.bool(forKey: "allowCloudVideo")
         fullSpeedPreload = d.bool(forKey: "fullSpeedPreload")
         photoPreloadCount = max(1, d.integer(forKey: "photoPreloadCount"))
-        videoPreloadCount = max(1, d.integer(forKey: "videoPreloadCount"))
+        videoPreloadCount = max(0, d.integer(forKey: "videoPreloadCount"))
         textSize = d.string(forKey: "textSize") ?? "system"
         language = d.string(forKey: "language") ?? "zh-Hant"
         appearance = d.string(forKey: "appearance") ?? "system"
@@ -77,6 +91,7 @@ final class AppSettings: ObservableObject {
         haptics = d.bool(forKey: "haptics"); autoEstimate = d.bool(forKey: "autoEstimate")
         advanceAfterAlbumAction = d.bool(forKey: "advanceAfterAlbumAction")
         favorites = Set(d.stringArray(forKey: "videoFavorites") ?? [])
+        showOnboarding = OnboardingPolicy.needsGuide(d)
     }
     var colorScheme: ColorScheme? { appearance == "dark" ? .dark : appearance == "light" ? .light : nil }
 
@@ -135,6 +150,16 @@ struct SettingsView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var updateManager: AppUpdateManager
     @State private var showDiagnosticsConfirmation = false
+
+    private var updateCheckButton: some View {
+        Button { Task { await updateManager.checkManually() } } label: {
+            HStack {
+                Label(L("檢查更新", "Check for updates"), systemImage: "arrow.clockwise")
+                Spacer()
+                if updateManager.isChecking { ProgressView().controlSize(.small) }
+            }
+        }.disabled(updateManager.isChecking)
+    }
 
     private func categoryLink(_ item: SettingsCategory) -> some View {
         NavigationLink {
@@ -260,6 +285,9 @@ struct SettingsView: View {
                         Text(L("影片雙擊中間會直接切換 iOS 系統的喜好項目。", "Double-tapping the center of a video toggles the iOS system Favorite state."))
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    Section(L("預載效能", "Preload performance")) {
+                        PreloadPresetPicker()
+                    }
                     Section(L("進階效能", "Advanced performance")) {
                         DisclosureGroup(
                             L("預載設定", "Preloading settings")
@@ -283,6 +311,7 @@ struct SettingsView: View {
                                 L("影片預載數量", "Videos to preload"),
                                 selection: $settings.videoPreloadCount
                             ) {
+                                Text("0").tag(0)
                                 Text("1").tag(1)
                                 Text("2").tag(2)
                                 Text("3").tag(3)
@@ -290,8 +319,8 @@ struct SettingsView: View {
                             }
 
                             Text(L(
-                                "全速預載可能在背景從 iCloud 預先下載後續照片與影片，會增加行動數據、電量與暫存空間使用。關閉時仍會優先預載本機內容。",
-                                "Full-speed preloading may download upcoming photos and videos from iCloud in the background, increasing cellular data, battery, and temporary storage use. When disabled, local media is still preloaded first."
+                                "全速預載會準備較大縮圖，增加電量與快取；下載始終遵守照片／影片各自的允許設定。關閉時仍優先預載本機內容。",
+                                "Full-speed preloading prepares larger thumbnails and uses more battery and cache. Downloads always require separate photo/video permission. Local content is prioritized in every mode."
                             ))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -314,6 +343,8 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
+
+                        updateCheckButton
 
                         Link(destination: AppLinks.support) {
                             Label(
@@ -378,24 +409,7 @@ struct SettingsView: View {
                                 .monospacedDigit()
                         }
 
-                        Button {
-                            Task { await updateManager.checkManually() }
-                        } label: {
-                            HStack {
-                                Label(
-                                    L("檢查更新", "Check for updates"),
-                                    systemImage: "arrow.clockwise"
-                                )
-
-                                Spacer()
-
-                                if updateManager.isChecking {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                            }
-                        }
-                        .disabled(updateManager.isChecking)
+                        updateCheckButton
 
                         Link(destination: AppLinks.report) {
                             Label(
@@ -460,6 +474,7 @@ struct SettingsView: View {
 #endif
                 case .information:
                     Section(L("紀錄與說明", "History & information")) {
+                        Button(L("重新檢視首次導覽", "Revisit getting started")) { settings.reviewingOnboarding = true }
                         NavigationLink(L("完整手勢教學", "Gesture guide")) { GestureReferenceView() }
                         NavigationLink(L("操作紀錄", "Activity history")) { HistoryView() }
                         Link(destination: AppLinks.privacy) {
@@ -514,7 +529,20 @@ struct SettingsView: View {
         }
         .navigationTitle(category?.title ?? L("設定", "Settings"))
         .navigationBarTitleDisplayMode(.inline)
-        .alert(item: $updateManager.manualAlert) { alert in
+        .sheet(isPresented: $settings.reviewingOnboarding) {
+            WelcomeGuide(reviewing: true) { settings.reviewingOnboarding = false }
+        }
+        .task(id: settings.reviewingOnboarding || showDiagnosticsConfirmation) {
+            updateManager.setPresentationBlocked(settings.reviewingOnboarding || showDiagnosticsConfirmation, reason: "settings-modal")
+        }
+        .onDisappear { updateManager.setPresentationBlocked(false, reason: "settings-modal") }
+        .onChange(of: updateManager.manualAlert?.id) { _, _ in
+            updateManager.setPresentationBlocked(settings.reviewingOnboarding || showDiagnosticsConfirmation, reason: "settings-modal")
+        }
+        .alert(item: Binding(
+            get: { updateManager.presentationBlocked ? nil : updateManager.manualAlert },
+            set: { updateManager.manualAlert = $0 }
+        )) { alert in
             Alert(
                 title: Text(alert.title),
                 message: Text(alert.message),

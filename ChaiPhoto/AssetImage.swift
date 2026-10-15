@@ -695,6 +695,7 @@ final class VideoLoader: ObservableObject {
         endObserver = nil
 
         player?.pause()
+        player?.replaceCurrentItem(with: nil)
         player = nil
 
         if let request {
@@ -735,6 +736,7 @@ struct LocalVideoView: View {
 
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var mediaPreloader: MediaPreloader
+    @EnvironmentObject private var updateManager: AppUpdateManager
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var loader = VideoLoader()
     @State private var askCloud = false
@@ -795,9 +797,13 @@ struct LocalVideoView: View {
         .animation(.easeInOut(duration: 0.14), value: loader.renderReady)
         .animation(.easeInOut(duration: 0.14), value: loader.isPlaying)
         .animation(.easeInOut(duration: 0.14), value: seekFeedback)
-        .task(id: "\(asset.localIdentifier)-\(settings.canPreloadVideoNetwork)") {
+        .task(id: asset.localIdentifier) {
             if loader.player == nil { reload() }
             loader.setVisible(active || showFullscreen)
+        }
+        .onChange(of: settings.canPreloadVideoNetwork) { _, _ in
+            // Revoke/cancel an in-flight cloud request as well as granting access.
+            reload()
         }
         .onChange(of: active) { _, value in
             loader.setVisible(value || showFullscreen)
@@ -858,6 +864,12 @@ struct LocalVideoView: View {
         }
         .onDisappear {
             if !showFullscreen { loader.setVisible(false) }
+            if !(askCloud || showFullscreen || scrubbing) {
+                updateManager.setPresentationBlocked(false, reason: "video-player-modal")
+            }
+        }
+        .task(id: askCloud || showFullscreen || scrubbing) {
+            updateManager.setPresentationBlocked(askCloud || showFullscreen || scrubbing, reason: "video-player-modal")
         }
     }
 
@@ -1067,7 +1079,7 @@ struct LocalVideoView: View {
 
     private func reload() {
         let preparedPlayer =
-            mediaPreloader.takePreparedPlayer(for: asset.localIdentifier)
+            mediaPreloader.takePreparedPlayer(for: asset.localIdentifier, allowNetwork: settings.canDownloadVideo)
         let preparedPoster =
             mediaPreloader.cachedImage(for: asset.localIdentifier)
 

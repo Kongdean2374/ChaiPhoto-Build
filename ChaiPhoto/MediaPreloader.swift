@@ -8,15 +8,31 @@ final class MediaPreloader: ObservableObject {
     private final class PreparedVideo {
         let player: AVPlayer
         var statusObservation: NSKeyValueObservation?
+        var transferred = false
+        var cancelled = false
 
         init(player: AVPlayer) {
             self.player = player
         }
 
+        func cancel() {
+            cancelled = true
+            statusObservation?.invalidate()
+            statusObservation = nil
+            if !transferred {
+                player.cancelPendingPrerolls()
+                player.pause()
+                player.replaceCurrentItem(with: nil)
+            }
+        }
+
         deinit {
             statusObservation?.invalidate()
-            player.cancelPendingPrerolls()
-            player.pause()
+            if !transferred {
+                player.cancelPendingPrerolls()
+                player.pause()
+                player.replaceCurrentItem(with: nil)
+            }
         }
     }
 
@@ -29,23 +45,26 @@ final class MediaPreloader: ObservableObject {
     private var photoTokens: [String: UUID] = [:]
     private var videoTokens: [String: UUID] = [:]
     private var networkPolicy: [Bool] = []
+    private var photoMaxSide: CGFloat = 1280
 
     func prepareNext(
         _ assets: [PHAsset],
         keepingCurrentID currentID: String?,
         photoCount: Int,
         videoCount: Int,
+        fullSpeed: Bool,
         allowPhotoNetwork: Bool,
         allowVideoNetwork: Bool
     ) {
-        let policy = [allowPhotoNetwork, allowVideoNetwork]
+        let policy = [allowPhotoNetwork, allowVideoNetwork, fullSpeed]
         if networkPolicy != policy { clear(); networkPolicy = policy }
+        photoMaxSide = fullSpeed ? 2560 : 1280
         var selected: [PHAsset] = []
         var selectedPhotos = 0
         var selectedVideos = 0
 
-        let photoLimit = max(0, photoCount)
-        let videoLimit = max(0, videoCount)
+        let photoLimit = min(8, max(0, photoCount))
+        let videoLimit = min(4, max(0, videoCount))
 
         for asset in assets {
             if asset.mediaType == .image, selectedPhotos < photoLimit {
@@ -99,13 +118,18 @@ final class MediaPreloader: ObservableObject {
         photoCache[assetID]
     }
 
-    func takePreparedPlayer(for assetID: String) -> AVPlayer? {
+    func takePreparedPlayer(for assetID: String, allowNetwork: Bool) -> AVPlayer? {
+        if !allowNetwork, networkPolicy.count > 1, networkPolicy[1] {
+            cancel(assetID: assetID)
+            return nil
+        }
         guard let prepared = videoCache.removeValue(forKey: assetID) else {
             return nil
         }
 
         prepared.statusObservation?.invalidate()
         prepared.statusObservation = nil
+        prepared.transferred = true
         videoRequests.removeValue(forKey: assetID)
         return prepared.player
     }
@@ -124,7 +148,7 @@ final class MediaPreloader: ObservableObject {
         }
 
         photoCache.removeValue(forKey: assetID)
-        videoCache.removeValue(forKey: assetID)
+        videoCache.removeValue(forKey: assetID)?.cancel()
     }
 
     func clear() {
@@ -167,7 +191,7 @@ final class MediaPreloader: ObservableObject {
 
         let width = max(1, CGFloat(asset.pixelWidth))
         let height = max(1, CGFloat(asset.pixelHeight))
-        let scale = min(1, 2560 / max(width, height))
+        let scale = min(1, photoMaxSide / max(width, height))
         let targetSize = CGSize(
             width: width * scale,
             height: height * scale
@@ -275,6 +299,7 @@ final class MediaPreloader: ObservableObject {
                         }
 
                         DispatchQueue.main.async {
+                            guard !prepared.cancelled, !prepared.transferred else { return }
                             prepared.player.preroll(atRate: 1) { _ in }
                         }
                     }
@@ -335,7 +360,7 @@ final class MediaPreloader: ObservableObject {
             videoCache.keys.filter { !ids.contains($0) }
 
         for id in staleVideos {
-            videoCache.removeValue(forKey: id)
+            videoCache.removeValue(forKey: id)?.cancel()
         }
     }
 }

@@ -145,7 +145,7 @@ struct SystemShareView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: [url], applicationActivities: nil) }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
-func prepareVideoShare(_ asset: PHAsset) async throws -> URL {
+func prepareVideoShare(_ asset: PHAsset, allowNetwork: Bool) async throws -> URL {
     let resources = PHAssetResource.assetResources(for: asset)
     guard let resource =
         resources.first(where: { $0.type == .fullSizeVideo }) ??
@@ -170,7 +170,7 @@ func prepareVideoShare(_ asset: PHAsset) async throws -> URL {
     let url = folder.appendingPathComponent(name)
 
     do {
-        try await exportShareResource(resource, to: url)
+        try await exportShareResource(resource, to: url, allowNetwork: allowNetwork)
         try Task.checkCancellation()
 
         return url
@@ -192,7 +192,7 @@ func prepareVideoShare(_ asset: PHAsset) async throws -> URL {
 }
 
 
-func preparePhotoShare(_ asset: PHAsset) async throws -> URL {
+func preparePhotoShare(_ asset: PHAsset, allowNetwork: Bool) async throws -> URL {
     let resources = PHAssetResource.assetResources(for: asset)
     guard let resource =
         resources.first(where: { $0.type == .fullSizePhoto }) ??
@@ -218,7 +218,7 @@ func preparePhotoShare(_ asset: PHAsset) async throws -> URL {
     let url = folder.appendingPathComponent(name)
 
     do {
-        try await exportShareResource(resource, to: url)
+        try await exportShareResource(resource, to: url, allowNetwork: allowNetwork)
         try Task.checkCancellation()
 
         return url
@@ -248,7 +248,9 @@ private final class ShareResourceExport: @unchecked Sendable {
     private var finished = false
     private var cancelled = false
 
-    init(url: URL) throws {
+    private let allowNetwork: Bool
+    init(url: URL, allowNetwork: Bool) throws {
+        self.allowNetwork = allowNetwork
         FileManager.default.createFile(atPath: url.path, contents: nil)
         handle = try FileHandle(forWritingTo: url)
     }
@@ -259,7 +261,7 @@ private final class ShareResourceExport: @unchecked Sendable {
         self.continuation = continuation
         lock.unlock()
         let options = PHAssetResourceRequestOptions()
-        options.isNetworkAccessAllowed = true
+        options.isNetworkAccessAllowed = allowNetwork
         let id = PHAssetResourceManager.default().requestData(for: resource, options: options) { [self] data in
             lock.lock()
             guard !finished else { lock.unlock(); return }
@@ -293,8 +295,8 @@ private final class ShareResourceExport: @unchecked Sendable {
     }
 }
 
-private func exportShareResource(_ resource: PHAssetResource, to url: URL) async throws {
-    let export = try ShareResourceExport(url: url)
+private func exportShareResource(_ resource: PHAssetResource, to url: URL, allowNetwork: Bool) async throws {
+    let export = try ShareResourceExport(url: url, allowNetwork: allowNetwork)
     try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { export.start(resource, continuation: $0) }
     } onCancel: { export.cancel() }

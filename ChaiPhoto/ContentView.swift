@@ -10,139 +10,79 @@ struct ContentView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var updateManager: AppUpdateManager
-    @AppStorage("selectedTab.v1") private var selectedTab = 0
-    @State private var showLaunchWelcome = true
-    @State private var showWelcome = false
+    @Environment(\.scenePhase) private var scenePhase
+    // Old selectedTab.v1 is deliberately ignored, without deleting saved progress.
+    @State private var selectedTab = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var presentationBlocked: Bool {
+        settings.showOnboarding || settings.reviewingOnboarding || scenePhase != .active || library.isDeleting ||
+        library.message != nil || settings.showCloudPhotoPrompt
+    }
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            NavigationStack { SortView() }
-                .tabItem { Label(L("整理", "Sort"), systemImage: "rectangle.stack.fill") }
-                .tag(0)
-            NavigationStack { ReviewView() }
-                .tabItem { Label(L("待刪", "Review"), systemImage: "trash") }
-                .badge(library.pending.count)
-                .tag(1)
-            NavigationStack { SettingsView() }
-                .tabItem { Label(L("設定", "Settings"), systemImage: "gearshape.fill") }
-                .tag(2)
-        }
-        .sheet(isPresented: $showWelcome) {
-            WelcomeGuide {
-                UserDefaults.standard.set(true, forKey: "welcome.v1.2")
-                showWelcome = false
+        Group {
+            if settings.showOnboarding {
+                WelcomeGuide {
+                    selectedTab = 0
+                    settings.showOnboarding = false
+                }
+            } else {
+                TabView(selection: $selectedTab) {
+                    NavigationStack { SortView() }
+                        .tabItem { Label(L("整理", "Sort"), systemImage: "rectangle.stack.fill") }.tag(0)
+                    NavigationStack { ReviewView() }
+                        .tabItem { Label(L("待刪", "Review"), systemImage: "trash") }
+                        .badge(library.pending.count).tag(1)
+                    NavigationStack { SettingsView() }
+                        .tabItem { Label(L("設定", "Settings"), systemImage: "gearshape.fill") }.tag(2)
+                }
             }
         }
         .overlay(alignment: .top) {
-            if let notice = library.successNotice {
+            if !settings.showOnboarding, let notice = library.successNotice {
                 Label(notice, systemImage: "checkmark.circle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-                    .padding()
-                    .lineLimit(4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .allowsHitTesting(false)
+                    .font(.callout).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                    .padding().lineLimit(4).allowsHitTesting(false)
                     .accessibilityAddTraits(.isStaticText)
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: library.successNotice)
         .overlay(alignment: .top) {
-            if !showLaunchWelcome && !showWelcome && updateManager.showPrompt {
-                AppUpdateBanner()
-                    .zIndex(900)
-            }
+            if !presentationBlocked && updateManager.showPrompt { AppUpdateBanner() }
         }
-        .animation(
-            reduceMotion ? nil : .easeInOut(duration: 0.22),
-            value: updateManager.showPrompt
-        )
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: updateManager.showPrompt)
         .task(id: library.successNotice) {
             guard library.successNotice != nil else { return }
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             library.successNotice = nil
         }
-        .overlay {
-            if showLaunchWelcome {
-                LaunchWelcomeView()
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985)))
-                    .zIndex(1000)
-            }
+        .task(id: presentationBlocked) {
+            updateManager.setPresentationBlocked(presentationBlocked, reason: "root")
         }
-        .task {
-            guard showLaunchWelcome else { return }
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 450 : 950))
-            guard !Task.isCancelled else { return }
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
-                showLaunchWelcome = false
-            }
-            if !UserDefaults.standard.bool(forKey: "welcome.v1.2") {
-                try? await Task.sleep(for: .milliseconds(reduceMotion ? 50 : 180))
-                guard !Task.isCancelled else { return }
-                showWelcome = true
-            }
-        }
-        .task {
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 650 : 1100))
-            guard !Task.isCancelled else { return }
+        .task(id: settings.showOnboarding) {
+            guard !settings.showOnboarding else { return }
+            updateManager.setPresentationBlocked(presentationBlocked, reason: "root")
             await updateManager.checkAutomaticallyOnce()
         }
         .tint(.indigo)
         .disabled(library.isDeleting)
-        .alert(L("提醒", "Notice"), isPresented: Binding(get: { library.message != nil }, set: { if !$0 { library.message = nil } })) {
+        .alert(L("提醒", "Notice"), isPresented: Binding(
+            get: { !settings.showOnboarding && !settings.reviewingOnboarding && !settings.showCloudPhotoPrompt && library.message != nil },
+            set: { if !$0 { library.message = nil } }
+        )) {
             Button(L("好", "OK")) { library.message = nil }
         } message: { Text(library.message ?? "") }
-        .alert(L("允許載入 iCloud 照片？", "Allow iCloud photo downloads?"), isPresented: $settings.showCloudPhotoPrompt) {
-            Button(L("暫不載入", "Not now"), role: .cancel) {
-                settings.declineCloudPhotosForNow()
-            }
-            Button(L("本次允許", "Allow this session")) {
-                settings.allowCloudPhotosThisSession()
-            }
+        .alert(L("允許載入 iCloud 照片？", "Allow iCloud photo downloads?"), isPresented: Binding(
+            get: { !settings.showOnboarding && !settings.reviewingOnboarding && scenePhase == .active && settings.showCloudPhotoPrompt },
+            set: { settings.showCloudPhotoPrompt = $0 }
+        )) {
+            Button(L("暫不載入", "Not now"), role: .cancel) { settings.declineCloudPhotosForNow() }
+            Button(L("本次允許", "Allow this session")) { settings.allowCloudPhotosThisSession() }
+            Button(L("始終允許", "Always allow")) { settings.allowCloudPhoto = true }
         } message: {
-            Text(L(
-                "偵測到這張照片需要從 iCloud 下載才能顯示完整畫質。允許後，本次開啟 App 期間遇到其他 iCloud 照片也會自動下載；完全關閉 App 後失效。下載可能使用行動數據。",
-                "This photo needs to be downloaded from iCloud for full quality. If allowed, other iCloud photos will also download automatically for this app session. The permission expires after the app is fully closed and may use cellular data."
-            ))
-        }
-    }
-}
-
-private struct LaunchWelcomeView: View {
-    var body: some View {
-        ZStack {
-            Color(uiColor: .systemBackground).ignoresSafeArea()
-            RadialGradient(colors: [.indigo.opacity(0.28), .purple.opacity(0.08), .clear], center: .center, startRadius: 20, endRadius: 340)
-                .ignoresSafeArea()
-            VStack(spacing: 24) {
-                ZStack {
-                    ForEach(0..<3) { index in
-                        RoundedRectangle(cornerRadius: 28)
-                            .fill(LinearGradient(colors: [.indigo.opacity(0.9), .purple.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 116, height: 136)
-                            .overlay(RoundedRectangle(cornerRadius: 28).stroke(.white.opacity(0.25), lineWidth: 1))
-                            .rotationEffect(.degrees(Double(index - 1) * 13))
-                            .offset(x: CGFloat(index - 1) * 16, y: CGFloat(index) * -5)
-                    }
-                    Image(systemName: "photo.stack.fill")
-                        .font(.system(size: 52, weight: .medium))
-                        .foregroundStyle(.white)
-                }
-                .frame(height: 166)
-                .accessibilityHidden(true)
-                VStack(spacing: 10) {
-                    Text("ChaiPhoto").font(.system(size: 38, weight: .bold, design: .rounded))
-                    Text(L("留下喜歡的，空間留給新的。", "Keep what matters. Make room for more."))
-                        .font(.subheadline).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .padding(30)
-            .accessibilityElement(children: .combine)
+            Text(L("允許後，本次開啟 App 期間可以下載 iCloud 照片；完全關閉後失效，可能使用行動數據。",
+                   "Allow iCloud photo downloads for this app session. Permission expires after closing the app and may use cellular data."))
         }
     }
 }
@@ -344,8 +284,14 @@ struct SortView: View {
                 sessionIDs.formUnion(scope.map(\.localIdentifier))
             }
             .onDisappear {
+                if !(showFilter || preview != nil || albumTarget != nil || info != nil || share != nil || completion != nil || tutorialKind != nil) {
+                    updateManager.setPresentationBlocked(false, reason: "sort-modal")
+                }
                 mediaPreloader.clear()
                 cancelPhotoShare()
+            }
+            .task(id: showFilter || preview != nil || albumTarget != nil || info != nil || share != nil || completion != nil || tutorialKind != nil) {
+                updateManager.setPresentationBlocked(showFilter || preview != nil || albumTarget != nil || info != nil || share != nil || completion != nil || tutorialKind != nil, reason: "sort-modal")
             }
     }
 
@@ -377,6 +323,7 @@ struct SortView: View {
                 keepingCurrentID: currentAsset?.localIdentifier,
                 photoCount: settings.photoPreloadCount,
                 videoCount: settings.videoPreloadCount,
+                fullSpeed: settings.fullSpeedPreload,
                 allowPhotoNetwork: settings.canPreloadPhotoNetwork,
                 allowVideoNetwork: settings.canPreloadVideoNetwork
             )
@@ -681,7 +628,7 @@ struct SortView: View {
         shareGeneration = generation
         shareTask = Task {
             do {
-                let url = try await preparePhotoShare(asset)
+                let url = try await preparePhotoShare(asset, allowNetwork: settings.canDownloadPhoto)
                 guard !Task.isCancelled, generation == shareGeneration else {
                     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
                     return

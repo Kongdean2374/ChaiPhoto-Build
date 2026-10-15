@@ -4,6 +4,7 @@ import SwiftUI
 struct ReviewView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var updateManager: AppUpdateManager
     @StateObject private var estimator = SizeEstimator()
     @State private var preview: PreviewSelection?
     @State private var restoreTarget: PreviewSelection?
@@ -176,7 +177,15 @@ struct ReviewView: View {
             ))
         }
         .task(id: library.pending.map(\.localIdentifier)) { if settings.autoEstimate { estimator.start(library.pending) } }
-        .onDisappear { estimator.stop() }
+        .task(id: showDeleteConfirmation || preview != nil || restoreTarget != nil) {
+            updateManager.setPresentationBlocked(showDeleteConfirmation || preview != nil || restoreTarget != nil, reason: "review-modal")
+        }
+        .onDisappear {
+            estimator.stop()
+            if !(showDeleteConfirmation || preview != nil || restoreTarget != nil) {
+                updateManager.setPresentationBlocked(false, reason: "review-modal")
+            }
+        }
     }
     private var footer: some View {
         let ids = library.selectedPending

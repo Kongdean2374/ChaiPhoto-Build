@@ -143,12 +143,18 @@ struct VideoFeedView: View {
         }
         .onChange(of: asset.isFavorite) { _, value in systemFavorite = value }
         .onDisappear {
+            if !(info || share != nil || showAlbumPicker || showAlbumContextDialog || preparing) {
+                updateManager.setPresentationBlocked(false, reason: "video-modal")
+            }
             updateManager.setSortingInteractionActive(false)
             library.setSortingInteraction(false, assetID: asset.localIdentifier)
             visible = false
             library.cancelTransition(for: asset.localIdentifier)
             cancelShare()
             cleanupShare()
+        }
+        .task(id: info || share != nil || showAlbumPicker || showAlbumContextDialog || preparing) {
+            updateManager.setPresentationBlocked(info || share != nil || showAlbumPicker || showAlbumContextDialog || preparing, reason: "video-modal")
         }
     }
 
@@ -304,7 +310,7 @@ struct VideoFeedView: View {
         shareGeneration = generation
         shareTask = Task {
             do {
-                let url = try await prepareVideoShare(asset)
+                let url = try await prepareVideoShare(asset, allowNetwork: settings.canDownloadVideo)
                 guard !Task.isCancelled, generation == shareGeneration else {
                     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
                     return

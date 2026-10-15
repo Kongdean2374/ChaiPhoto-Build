@@ -21,6 +21,7 @@ targets:
       - path: ChaiPhoto/ChaiPhotoApp.swift
       - path: ChaiPhoto/ContentView.swift
       - path: ChaiPhoto/AppSettings.swift
+      - path: ChaiPhoto/AppExperiencePolicy.swift
       - path: ChaiPhoto/AppUpdateManager.swift
       - path: ChaiPhoto/PhotoLibraryStore.swift
       - path: ChaiPhoto/AssetImage.swift

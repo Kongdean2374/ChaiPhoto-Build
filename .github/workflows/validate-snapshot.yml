@@ -1,0 +1,71 @@
+name: Validate Reviewed Snapshot
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact approved public main commit SHA (40 hex characters)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: chaiphoto-snapshot-validation
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.repository == 'Kongdean2374/ChaiPhoto-Build' && github.event.repository.private == false && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - name: Checkout exact dispatched public source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify reviewed source and offline delivery regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_public_tree.py
+          python3 -m unittest discover -s tests -v
+      - name: Install verified toolchain
+        run: bash scripts/install_toolchain.sh
+      - name: Run executable policy regressions for both flavors
+        shell: bash
+        run: |
+          set -euo pipefail
+          for flavor in CHAIPHOTO_TESTFLIGHT CHAIPHOTO_APPSTORE; do
+            swiftc -swift-version 5 -D "$flavor" ChaiPhoto/AppExperiencePolicy.swift ChaiPhoto/ReviewQueueOrdering.swift Validation/ExperiencePolicyRegression.swift -o "$RUNNER_TEMP/policy-tests"
+            "$RUNNER_TEMP/policy-tests"
+          done
+      - name: Compile both unsigned iPhoneOS flavors
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          python3 scripts/verify_public_tree.py --project
+          for config in Release-TestFlight Release-AppStore; do
+            xcodebuild -quiet -project ChaiPhoto.xcodeproj -scheme ChaiPhoto \
+              -configuration "$config" -sdk iphoneos -destination 'generic/platform=iOS' \
+              -derivedDataPath "$RUNNER_TEMP/device-$config" \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+            echo "iPhoneOS $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Run XCTest and lifecycle UI tests for both flavors
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project-tests.yml
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for devices in json.load(sys.stdin)["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
+          for config in Release-TestFlight Release-AppStore; do
+            xcodebuild -quiet -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
+              -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+              -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
+              -resultBundlePath "$RUNNER_TEMP/test-$config.xcresult" \
+              -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test
+            echo "XCTest + lifecycle UI $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+          done

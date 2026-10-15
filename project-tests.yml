@@ -1,0 +1,46 @@
+include:
+  - project.yml
+settings:
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG CHAIPHOTO_TESTFLIGHT"
+    Release:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "CHAIPHOTO_TESTFLIGHT"
+    Release-TestFlight:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "CHAIPHOTO_TESTFLIGHT"
+    Release-AppStore:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "CHAIPHOTO_APPSTORE"
+targets:
+  ChaiPhotoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: TestsUI/LaunchFlowTests.swift
+    dependencies:
+      - target: ChaiPhoto
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ChaiPhoto
+  ChaiPhotoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/StateRegressionTests.swift
+      - path: Tests/ExperienceRegressionTests.swift
+    dependencies:
+      - target: ChaiPhoto
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  ChaiPhotoValidation:
+    build:
+      targets:
+        ChaiPhoto: all
+        ChaiPhotoTests: [test]
+        ChaiPhotoUITests: [test]
+    test:
+      targets:
+        - ChaiPhotoTests
+        - ChaiPhotoUITests
