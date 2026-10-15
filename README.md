@@ -39,8 +39,8 @@ inaccessible APIs or pagination limits stop delivery. Both current and legacy Ap
 state field names are supported. The checks cannot guarantee final Apple validation
 or prevent cross-repository races.
 
-The owner reports 1.2.6 (58) is already in TestFlight; build 60 was also uploaded.
-Never reuse either number. Each new TestFlight upload must use an unused even build
+The owner reports 1.2.6 (58) is already in TestFlight; builds 60 and 62 were also uploaded.
+Never reuse these numbers. Each new TestFlight upload must use an unused even build
 above Apple's highest existing build, confirmed by live preflight. Source changes
 and validation builds do not reserve a number. The repository build setting remains
 a placeholder; Apple uploads require separate owner authorization.
@@ -88,13 +88,23 @@ through the established authorized process. No feedback or website token is held
 
 This 1.2.6 snapshot starts each new process in Sort and keeps the current tab when
 returning from the background. Fresh installs get a resumable three-step setup;
-existing preferences and sorting progress are preserved. Preloading has only four modes: Off, Low, Balanced and Aggressive, with no manual
+existing preferences and sorting progress are preserved. The General setup page
+shares its controls with Settings: preload speed and always-download permissions
+appear together, with display/language, sorting and playback in compact groups.
+Inline notes explain on/off behavior; photo access warnings remain separate.
+Preloading has only four modes: Off, Low, Balanced and Aggressive, with no manual
 count controls. Balanced observes battery, charging, Low Power Mode, thermal state
 and network cost/Low Data Mode; Aggressive uses the existing 8-photo/4-video cap.
 Off cancels background preparation and requires item-specific cloud consent even
 when a saved permanent or session permission exists. Local display still works;
 Off does not blank the library. Item grants remain in memory and never permit the
-next asset or background preloading. Preload intensity never grants download permission. Beta updates use the existing Beta API;
+next asset or background preloading. With an active speed, missing permanent
+permissions are requested once per process after onboarding, photo access and
+modal presentation allow it. Declining makes the unapproved media preload budgets
+zero without changing the selected speed. Manual item grants never resume future
+preloading. The next process asks again; returning from the background does not.
+Permanent photo and video permissions remain independent. Preload intensity never
+grants download permission. Beta updates use the existing Beta API;
 App Store updates use Apple's public Lookup with app identity and link validation.
 
 The manual validation workflow compiles both Release-TestFlight and Release-AppStore

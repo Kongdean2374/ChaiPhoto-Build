@@ -16,7 +16,8 @@ final class AppSettings: ObservableObject {
         didSet {
             defaults.set(allowCloudPhoto, forKey: "allowCloudPhoto")
             cloudPhotoSessionAllowed = false
-            cloudPhotoPromptHandled = false
+            cloudPhotoPromptHandled = cloudSessionDecisionHandled
+            photoItemGrants.removeAll(); photoItemsPrompted.removeAll()
             showCloudPhotoPrompt = false
         }
     }
@@ -25,7 +26,7 @@ final class AppSettings: ObservableObject {
     var cloudPhotoPromptHandled = false
     var canDownloadPhoto: Bool { preloadPreset != .off && DownloadPolicy.allowed(permanent: allowCloudPhoto, session: cloudPhotoSessionAllowed) }
 
-    @Published var allowCloudVideo: Bool { didSet { defaults.set(allowCloudVideo, forKey: "allowCloudVideo"); cloudSessionAllowed = false; cloudPromptHandled = false } }
+    @Published var allowCloudVideo: Bool { didSet { defaults.set(allowCloudVideo, forKey: "allowCloudVideo"); cloudSessionAllowed = false; cloudPromptHandled = cloudSessionDecisionHandled; videoItemGrants.removeAll(); videoItemsPrompted.removeAll() } }
     @Published var cloudSessionAllowed = false
     var cloudPromptHandled = false
     var canDownloadVideo: Bool { preloadPreset != .off && DownloadPolicy.allowed(permanent: allowCloudVideo, session: cloudSessionAllowed) }
@@ -48,7 +49,29 @@ final class AppSettings: ObservableObject {
     private var resourceObservers: [NSObjectProtocol] = []
     private var monitoringResources = false
 
-    var effectivePreload: PreloadConfiguration { preloadPreset.configuration(in: preloadEnvironment) }
+    @Published var showCloudSessionPrompt = false
+    @Published private(set) var cloudSessionDecisionHandled = false
+    private(set) var sessionRequestsPhoto = false
+    private(set) var sessionRequestsVideo = false
+    var needsCloudSessionDecision: Bool {
+        preloadPreset != .off && !cloudSessionDecisionHandled && (!canDownloadPhoto || !canDownloadVideo)
+    }
+    var effectivePreload: PreloadConfiguration {
+        preloadPreset.authorizedConfiguration(in: preloadEnvironment, photoAllowed: canDownloadPhoto, videoAllowed: canDownloadVideo)
+    }
+    func requestCloudSessionPermission() {
+        guard needsCloudSessionDecision, !showCloudSessionPrompt, !showCloudPhotoPrompt else { return }
+        sessionRequestsPhoto = !canDownloadPhoto
+        sessionRequestsVideo = !canDownloadVideo
+        cloudSessionDecisionHandled = true
+        cloudPhotoPromptHandled = true; cloudPromptHandled = true
+        showCloudSessionPrompt = true
+    }
+    func decideCloudSession(allow: Bool) {
+        if sessionRequestsPhoto { cloudPhotoSessionAllowed = allow }
+        if sessionRequestsVideo { cloudSessionAllowed = allow }
+        showCloudSessionPrompt = false
+    }
     var canPreloadPhotoNetwork: Bool { canDownloadPhoto && preloadPreset.allowsBackgroundNetwork(in: preloadEnvironment) }
     var canPreloadVideoNetwork: Bool { canDownloadVideo && preloadPreset.allowsBackgroundNetwork(in: preloadEnvironment) }
     func canDownloadPhoto(for assetID: String) -> Bool { canDownloadPhoto || photoItemGrants.contains(assetID) }
@@ -58,11 +81,11 @@ final class AppSettings: ObservableObject {
         guard preset != preloadPreset else { return }
         preloadPreset = preset
         defaults.set(preset.rawValue, forKey: "preload.mode.v3")
-        photoItemGrants.removeAll(); videoItemGrants.removeAll()
+        // Speed changes never rewrite permanent or session download consent.
         photoItemsPrompted.removeAll(); videoItemsPrompted.removeAll()
-        cloudPhotoSessionAllowed = false; cloudSessionAllowed = false
-        cloudPhotoPromptHandled = false; cloudPromptHandled = false
+        cloudPhotoPromptHandled = cloudSessionDecisionHandled; cloudPromptHandled = cloudSessionDecisionHandled
         showCloudPhotoPrompt = false; cloudPhotoPromptAssetID = nil
+        if preset == .off { showCloudSessionPrompt = false }
     }
 
     func startResourceMonitoring() {
@@ -149,6 +172,7 @@ final class AppSettings: ObservableObject {
     func requestCloudPhotoDownloadPermission(for assetID: String, inPreview: Bool = false, retry: Bool = false) {
         guard !canDownloadPhoto(for: assetID), !showCloudPhotoPrompt else { return }
         if !retry {
+            if needsCloudSessionDecision || showCloudSessionPrompt { return }
             if preloadPreset == .off { guard !photoItemsPrompted.contains(assetID) else { return } }
             else { guard !cloudPhotoPromptHandled else { return } }
         }
@@ -174,7 +198,7 @@ final class AppSettings: ObservableObject {
         cloudPhotoPromptAssetID = nil
     }
     func shouldPromptCloudVideo(for assetID: String) -> Bool {
-        guard !canDownloadVideo(for: assetID) else { return false }
+        guard !canDownloadVideo(for: assetID), !needsCloudSessionDecision, !showCloudSessionPrompt else { return false }
         if preloadPreset == .off { guard !videoItemsPrompted.contains(assetID) else { return false } }
         else { guard !cloudPromptHandled else { return false } }
         videoItemsPrompted.insert(assetID)
@@ -308,60 +332,12 @@ struct SettingsView: View {
             if let category {
                 switch category {
                 case .appearance:
-                    Section(L("介面", "Appearance")) {
-                        Picker(L("顯示模式", "Theme"), selection: $settings.appearance) {
-                            Text(L("跟隨系統", "System")).tag("system")
-                            Text(L("淺色", "Light")).tag("light")
-                            Text(L("深色", "Dark")).tag("dark")
-                        }
-                        Picker(L("文字大小", "Text size"), selection: $settings.textSize) {
-                            Text(L("跟隨系統", "System")).tag("system")
-                            Text(L("標準", "Standard")).tag("standard")
-                            Text(L("加大", "Large")).tag("large")
-                            Text(L("特大", "Extra large")).tag("extra")
-                        }
-                        Picker(L("語言", "Language"), selection: $settings.language) {
-                            Text("繁體中文").tag("zh-Hant")
-                            Text("English").tag("en")
-                        }
-                    }
+                    Section(L("介面", "Appearance")) { AppearancePreferenceFields() }
                 case .sorting:
-                    Section(L("整理操作", "Sorting")) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(L("照片滑動方向", "Photo swipe direction"))
-                            Picker(L("刪除方向", "Delete direction"), selection: $settings.deleteOnRight) {
-                                Text(L("← 待刪", "← Delete")).tag(false)
-                                Text(L("待刪 →", "Delete →")).tag(true)
-                            }.pickerStyle(.segmented)
-                            Text(settings.deleteOnRight ? L("右滑待刪，左滑保留", "Swipe right to delete; left to keep") : L("左滑待刪，右滑保留", "Swipe left to delete; right to keep"))
-                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        }
-                        Toggle(L("觸覺回饋", "Haptic feedback"), isOn: $settings.haptics)
-                        Toggle(L("自動估算待刪容量", "Estimate review size automatically"), isOn: $settings.autoEstimate)
-                        Toggle(L("照片加入相簿後自動下一張", "Advance after adding photo to albums"), isOn: $settings.advanceAfterAlbumAction)
-                        Text(L(
-                            "關閉時，加入或調整相簿後仍停留在目前照片，必須再左／右滑決定保留或待刪；開啟時，完成相簿變更後會視為保留並前往下一張。",
-                            "When off, album changes keep the current photo on screen until you swipe left/right to keep or delete it. When on, completing an album change marks it as kept and advances."
-                        ))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+                    Section(L("整理操作", "Sorting")) { SortingPreferenceFields() }
                 case .media:
-                    Section(L("預載效能", "Preload performance")) {
-                        PreloadPresetPicker()
-                    }
-                    Section(L("照片", "Photos")) {
-                        Toggle(L("始終允許下載 iCloud 照片", "Always allow iCloud photo downloads"), isOn: $settings.allowCloudPhoto).disabled(settings.preloadPreset == .off)
-                        Text(L("預載關閉時，此允許暫不套用，雲端照片會逐張詢問。", "With preloading off, this permission is suspended; each cloud photo asks separately."))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Section(L("影片", "Video")) {
-                        Toggle(L("始終允許下載 iCloud 影片", "Always allow iCloud video downloads"), isOn: $settings.allowCloudVideo).disabled(settings.preloadPreset == .off)
-                        Toggle(L("自動播放", "Autoplay"), isOn: $settings.autoplay)
-                        Toggle(L("預設靜音", "Mute by default"), isOn: $settings.muted)
-                        Text(L("影片雙擊中間會直接切換 iOS 系統的喜好項目。", "Double-tapping the center of a video toggles the iOS system Favorite state."))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+                    Section(L("iCloud 與預載", "iCloud & preloading")) { CloudPreloadSettingsView() }
+                    Section(L("影片播放", "Video playback")) { VideoPlaybackPreferenceFields() }
                 case .support:
 #if CHAIPHOTO_APPSTORE
                     Section(L("支援與回報", "Support & feedback")) {
@@ -654,5 +630,100 @@ enum SettingsCategory {
         case .support: .teal
         case .information: .gray
         }
+    }
+}
+
+
+// Shared by Settings and the first-run General page; bindings write only on user edits.
+struct AppearancePreferenceFields: View {
+    @EnvironmentObject private var settings: AppSettings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker(L("顯示模式", "Theme"), selection: $settings.appearance) {
+                Text(L("跟隨系統", "System")).tag("system")
+                Text(L("淺色", "Light")).tag("light")
+                Text(L("深色", "Dark")).tag("dark")
+            }
+            Picker(L("文字大小", "Text size"), selection: $settings.textSize) {
+                Text(L("跟隨系統", "System")).tag("system")
+                Text(L("標準", "Standard")).tag("standard")
+                Text(L("加大", "Large")).tag("large")
+                Text(L("特大", "Extra large")).tag("extra")
+            }
+            Picker(L("語言", "Language"), selection: $settings.language) {
+                Text("繁體中文").tag("zh-Hant")
+                Text("English").tag("en")
+            }
+        }.pickerStyle(.menu)
+    }
+}
+
+struct SortingPreferenceFields: View {
+    @EnvironmentObject private var settings: AppSettings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("照片刪除方向", "Photo delete direction"))
+            Picker(L("刪除方向", "Delete direction"), selection: $settings.deleteOnRight) {
+                Text(L("左滑待刪", "Delete left")).tag(false)
+                Text(L("右滑待刪", "Delete right")).tag(true)
+            }.pickerStyle(.segmented)
+            Toggle(L("觸覺回饋", "Haptic feedback"), isOn: $settings.haptics)
+            Toggle(L("自動估算待刪容量", "Estimate review size automatically"), isOn: $settings.autoEstimate)
+            Toggle(L("加入相簿後自動下一張", "Advance after adding to albums"), isOn: $settings.advanceAfterAlbumAction)
+            Text(settings.advanceAfterAlbumAction
+                 ? L("加入相簿後會視為保留並前往下一張。", "Adding to an album marks the photo as kept and advances.")
+                 : L("加入相簿後仍停留，等你滑動決定。", "Stay on the photo after album changes until you swipe."))
+                .font(.caption).foregroundStyle(settings.advanceAfterAlbumAction ? Color.orange : Color.secondary)
+        }
+    }
+}
+
+struct VideoPlaybackPreferenceFields: View {
+    @EnvironmentObject private var settings: AppSettings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(L("自動播放", "Autoplay"), isOn: $settings.autoplay).accessibilityIdentifier("autoplay-setting")
+            Text(settings.autoplay ? L("影片會自動播放，可能增加耗電。", "Videos play automatically and may use more battery.")
+                 : L("影片需手動播放。", "Tap to play videos manually."))
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle(L("預設靜音", "Mute by default"), isOn: $settings.muted).accessibilityIdentifier("mute-setting")
+            if !settings.muted {
+                Label(L("播放影片時會發出聲音。", "Videos will play with sound."), systemImage: "speaker.wave.2.fill")
+                    .font(.caption).foregroundStyle(.orange).accessibilityIdentifier("playback-sound-warning")
+            }
+        }
+    }
+}
+
+struct CloudPreloadSettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PreloadPresetPicker()
+            if settings.preloadPreset != .off {
+                Divider()
+                Toggle(L("始終允許下載 iCloud 照片", "Always allow iCloud photo downloads"), isOn: $settings.allowCloudPhoto)
+                    .accessibilityIdentifier("always-download-photos")
+                downloadNote(enabled: settings.allowCloudPhoto, session: settings.cloudPhotoSessionAllowed, photo: true)
+                Toggle(L("始終允許下載 iCloud 影片", "Always allow iCloud video downloads"), isOn: $settings.allowCloudVideo)
+                    .accessibilityIdentifier("always-download-videos")
+                downloadNote(enabled: settings.allowCloudVideo, session: settings.cloudSessionAllowed, photo: false)
+                if !settings.canDownloadPhoto && !settings.canDownloadVideo {
+                    Label(L("本次尚未允許自動下載，預載暫停；上方速度設定保留。", "Automatic downloads are not allowed this session. Preloading is paused; your speed setting is kept."), systemImage: "pause.circle")
+                        .font(.caption).foregroundStyle(.orange)
+                        .accessibilityIdentifier("preload-paused-note")
+                }
+            }
+        }
+    }
+    private func downloadNote(enabled: Bool, session: Bool, photo: Bool) -> some View {
+        Label(enabled
+              ? L("允許自動預載，可能使用行動數據。", "Allows automatic preloading; cellular data may be used.")
+              : session ? L("本次已允許；下次重開仍會詢問。", "Allowed this session; the next launch will ask again.")
+              : L("每次重開詢問；本次拒絕則手動下載。", "Ask each launch; if declined, download manually."),
+              systemImage: enabled ? "exclamationmark.triangle" : "info.circle")
+            .font(.caption).foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier(photo ? "photo-download-note" : "video-download-note")
     }
 }

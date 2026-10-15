@@ -71,6 +71,15 @@ struct ExperiencePolicyRegression {
                 }
             }
         }
+        for mode in PreloadPreset.allCases {
+            for photos in [false, true] {
+                for videos in [false, true] {
+                    let approved = mode.authorizedConfiguration(in: .init(), photoAllowed: photos, videoAllowed: videos)
+                    expect(approved.photos == (photos ? mode.configuration.photos : 0), "photo budget follows consent")
+                    expect(approved.videos == (videos ? mode.configuration.videos : 0), "video budget follows consent")
+                }
+            }
+        }
         expect(ReleaseVersion("1.2.10")! > ReleaseVersion("1.2.9")!, "numeric version ordering")
         expect(ReleaseVersion("1.2") == ReleaseVersion("1.2.0"), "equivalent versions")
         for invalid in ["", "1..2", "1.2.3.4", "-1.2", "1.2.beta", "１.２"] {

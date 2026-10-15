@@ -17,7 +17,13 @@ struct ContentView: View {
 
     private var presentationBlocked: Bool {
         settings.showOnboarding || settings.reviewingOnboarding || scenePhase != .active || library.isDeleting ||
-        library.message != nil || settings.showCloudPhotoPrompt
+        library.message != nil || settings.showCloudPhotoPrompt || settings.showCloudSessionPrompt ||
+        (selectedTab == 0 && library.hasAccess && !library.assets.isEmpty && settings.needsCloudSessionDecision)
+    }
+    private var canPresentCloudSessionPrompt: Bool {
+        selectedTab == 0 && library.hasAccess && !library.isLoading && !library.assets.isEmpty && !settings.showOnboarding && !settings.reviewingOnboarding &&
+        scenePhase == .active && !library.isDeleting && library.message == nil && !settings.showCloudPhotoPrompt &&
+        !updateManager.hasExternalPresentationBlocker && !settings.showCloudSessionPrompt && settings.needsCloudSessionDecision
     }
 
     var body: some View {
@@ -60,6 +66,9 @@ struct ContentView: View {
         .task(id: presentationBlocked) {
             updateManager.setPresentationBlocked(presentationBlocked, reason: "root")
         }
+        .task(id: canPresentCloudSessionPrompt) {
+            if canPresentCloudSessionPrompt { settings.requestCloudSessionPermission() }
+        }
         .task(id: settings.showOnboarding) {
             guard !settings.showOnboarding else { return }
             updateManager.setPresentationBlocked(presentationBlocked, reason: "root")
@@ -68,7 +77,7 @@ struct ContentView: View {
         .tint(.indigo)
         .disabled(library.isDeleting)
         .alert(L("提醒", "Notice"), isPresented: Binding(
-            get: { !settings.showOnboarding && !settings.reviewingOnboarding && !settings.showCloudPhotoPrompt && library.message != nil },
+            get: { !settings.showOnboarding && !settings.reviewingOnboarding && !settings.showCloudPhotoPrompt && !settings.showCloudSessionPrompt && library.message != nil },
             set: { if !$0 { library.message = nil } }
         )) {
             Button(L("好", "OK")) { library.message = nil }
@@ -78,16 +87,21 @@ struct ContentView: View {
             set: { settings.showCloudPhotoPrompt = $0 }
         )) {
             Button(L("暫不載入", "Not now"), role: .cancel) { settings.declineCloudPhotosForNow() }
-            if settings.preloadPreset == .off {
-                Button(L("只下載這張", "Download this photo")) { settings.allowCloudPhotoItem() }
-            } else {
-                Button(L("本次允許", "Allow this session")) { settings.allowCloudPhotosThisSession() }
-                Button(L("始終允許", "Always allow")) { settings.allowCloudPhoto = true }
-            }
+            Button(L("只下載這張", "Download this photo")) { settings.allowCloudPhotoItem() }
         } message: {
-            Text(settings.preloadPreset == .off
-                 ? L("只下載這張照片。可到設定更改預載模式。", "Download this photo only. Change preloading in Settings.")
-                 : L("允許此期間下載 iCloud 照片，可能使用行動數據。可到設定更改預載模式。", "Allow iCloud photos this session; cellular data may be used. Change preloading in Settings."))
+            Text(L("只下載這張照片。可在設定調整預載與始終下載允許。", "Download this photo only. Adjust preloading and always-allow permissions in Settings."))
+        }
+        .alert(L("本次允許 iCloud 預載？", "Allow iCloud preloading this session?"), isPresented: Binding(
+            get: { settings.showCloudSessionPrompt && !settings.showOnboarding && !settings.reviewingOnboarding && scenePhase == .active },
+            set: { _ in }
+        )) {
+            Button(L("本次不允許", "Not this session"), role: .cancel) { settings.decideCloudSession(allow: false) }
+            Button(L("本次允許", "Allow this session")) { settings.decideCloudSession(allow: true) }
+        } message: {
+            Text((settings.sessionRequestsPhoto && settings.sessionRequestsVideo
+                  ? L("照片與影片", "Photos and videos")
+                  : settings.sessionRequestsPhoto ? L("照片", "Photos") : L("影片", "Videos")) +
+                 L("：可能使用行動數據。拒絕後須逐項手動下載，速度設定不變；下次重開再詢問。", ": cellular data may be used. If declined, download items manually; your speed setting stays unchanged. Ask again next launch."))
         }
     }
 }

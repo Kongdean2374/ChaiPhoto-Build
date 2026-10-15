@@ -66,6 +66,10 @@ enum PreloadPreset: String, CaseIterable, Identifiable {
             return .init(photos: environment.charging ? 5 : 3, videos: environment.charging ? 3 : 2, fullSpeed: false)
         }
     }
+    func authorizedConfiguration(in environment: PreloadEnvironment, photoAllowed: Bool, videoAllowed: Bool) -> PreloadConfiguration {
+        let base = configuration(in: environment)
+        return .init(photos: photoAllowed ? base.photos : 0, videos: videoAllowed ? base.videos : 0, fullSpeed: base.fullSpeed)
+    }
     func allowsBackgroundNetwork(in environment: PreloadEnvironment) -> Bool {
         guard self != .off, environment.connected, !environment.constrained else { return false }
         return self != .balanced || !(environment.expensive || environment.lowPower || environment.lowBattery || environment.thermallyLimited)

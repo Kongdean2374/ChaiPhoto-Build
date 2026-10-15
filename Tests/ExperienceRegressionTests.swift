@@ -138,9 +138,11 @@ final class ExperienceRegressionTests: XCTestCase {
             let settings = AppSettings(defaults: defaults)
             settings.applyPreloadPreset(.balanced)
             settings.preloadEnvironment = .init(charging: true)
-            XCTAssertEqual(settings.effectivePreload.photos, 5)
+            XCTAssertEqual(settings.effectivePreload.photos, 0, "No preloading before consent")
             XCTAssertFalse(settings.canPreloadPhotoNetwork)
             settings.allowCloudPhoto = true
+            XCTAssertEqual(settings.effectivePreload.photos, 5)
+            XCTAssertEqual(settings.effectivePreload.videos, 0)
             XCTAssertTrue(settings.canPreloadPhotoNetwork)
             settings.preloadEnvironment = .init(expensive: true)
             XCTAssertEqual(settings.effectivePreload.photos, 1)
@@ -151,8 +153,72 @@ final class ExperienceRegressionTests: XCTestCase {
             settings.preloadEnvironment = .init(thermallyLimited: true)
             XCTAssertEqual(settings.effectivePreload.photos, 0)
             settings.applyPreloadPreset(.aggressive)
-            XCTAssertEqual(settings.effectivePreload, .init(photos: 8, videos: 4, fullSpeed: true))
+            XCTAssertEqual(settings.effectivePreload, .init(photos: 8, videos: 0, fullSpeed: true))
             XCTAssertFalse(settings.canPreloadVideoNetwork, "Intensity never grants video consent")
+        }
+    }
+
+    @MainActor func testSessionDeclinePausesPreloadingWithoutChangingSpeedAndAsksNextProcess() {
+        isolated { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.applyPreloadPreset(.aggressive)
+            XCTAssertTrue(settings.needsCloudSessionDecision)
+            settings.requestCloudSessionPermission()
+            XCTAssertTrue(settings.showCloudSessionPrompt)
+            settings.requestCloudPhotoDownloadPermission(for: "photo-A")
+            XCTAssertFalse(settings.showCloudPhotoPrompt, "Do not overlap startup and item alerts")
+            settings.decideCloudSession(allow: false)
+            XCTAssertEqual(settings.preloadPreset, .aggressive)
+            XCTAssertEqual(settings.effectivePreload.photos, 0)
+            XCTAssertEqual(settings.effectivePreload.videos, 0)
+            settings.requestCloudSessionPermission()
+            XCTAssertFalse(settings.showCloudSessionPrompt, "Once per process")
+            settings.requestCloudPhotoDownloadPermission(for: "photo-A")
+            XCTAssertFalse(settings.showCloudPhotoPrompt, "After declining, download only on explicit request")
+            settings.requestCloudPhotoDownloadPermission(for: "photo-A", retry: true)
+            settings.allowCloudPhotoItem()
+            XCTAssertTrue(settings.canDownloadPhoto(for: "photo-A"))
+            XCTAssertFalse(settings.canDownloadPhoto(for: "photo-B"))
+            XCTAssertEqual(settings.effectivePreload.photos, 0, "One item never resumes preload")
+            settings.applyPreloadPreset(.balanced)
+            XCTAssertFalse(settings.needsCloudSessionDecision, "Speed changes do not re-ask this session")
+            settings.applyPreloadPreset(.aggressive)
+            let next = AppSettings(defaults: defaults)
+            XCTAssertEqual(next.preloadPreset, .aggressive)
+            XCTAssertTrue(next.needsCloudSessionDecision)
+            XCTAssertFalse(next.canDownloadPhoto(for: "photo-A"))
+        }
+    }
+
+    @MainActor func testSessionGrantIsScopedAndNeverChangesPermanentFlags() {
+        isolated { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.allowCloudPhoto = true
+            settings.applyPreloadPreset(.aggressive)
+            settings.requestCloudSessionPermission()
+            XCTAssertFalse(settings.sessionRequestsPhoto)
+            XCTAssertTrue(settings.sessionRequestsVideo)
+            settings.decideCloudSession(allow: false)
+            XCTAssertEqual(settings.effectivePreload.photos, 8)
+            XCTAssertEqual(settings.effectivePreload.videos, 0)
+            XCTAssertTrue(settings.allowCloudPhoto)
+            XCTAssertFalse(settings.allowCloudVideo)
+            let next = AppSettings(defaults: defaults)
+            next.requestCloudSessionPermission()
+            next.decideCloudSession(allow: true)
+            XCTAssertTrue(next.cloudSessionAllowed)
+            XCTAssertFalse(next.allowCloudVideo, "A session grant is never persisted as always allow")
+            XCTAssertEqual(next.effectivePreload.videos, 4)
+            next.applyPreloadPreset(.economy)
+            XCTAssertTrue(next.cloudSessionAllowed, "Speed does not change this-session consent")
+            next.applyPreloadPreset(.off)
+            XCTAssertFalse(next.needsCloudSessionDecision)
+            XCTAssertEqual(next.effectivePreload.photos, 0)
+            XCTAssertEqual(next.effectivePreload.videos, 0)
+            next.applyPreloadPreset(.balanced)
+            XCTAssertTrue(next.cloudSessionAllowed)
+            XCTAssertEqual(next.effectivePreload.videos, 2)
+            XCTAssertFalse(AppSettings(defaults: defaults).cloudSessionAllowed)
         }
     }
 
@@ -195,7 +261,9 @@ final class ExperienceRegressionTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [UpdateResponseStub.self]
         let manager = AppUpdateManager(defaults: defaults, sessionConfiguration: config)
+        XCTAssertFalse(manager.hasExternalPresentationBlocker)
         manager.setPresentationBlocked(true, reason: "guide")
+        XCTAssertTrue(manager.hasExternalPresentationBlocker)
         manager.setPresentationBlocked(false, reason: "root")
         await manager.checkManually()
         XCTAssertNotNil(manager.availableUpdate)

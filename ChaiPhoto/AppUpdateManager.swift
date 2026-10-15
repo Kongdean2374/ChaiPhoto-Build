@@ -55,6 +55,8 @@ final class AppUpdateManager: ObservableObject {
 
     func checkManually() async { await performCheck(manual: true) }
 
+    var hasExternalPresentationBlocker: Bool { !blockers.subtracting(["root"]).isEmpty }
+
     func setPresentationBlocked(_ blocked: Bool, reason: String) {
         if blocked { blockers.insert(reason) } else { blockers.remove(reason) }
         presentationBlocked = !blockers.isEmpty

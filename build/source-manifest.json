@@ -2,15 +2,15 @@
   "schema": 1,
   "files": {
     "ChaiPhoto/AlbumPickerView.swift": "ffe311904bd94251eb38e5a4d8364e1a97ebcb9ec4db670bf54d9d5351adbbbd",
-    "ChaiPhoto/AppExperiencePolicy.swift": "bc29d00e1d59b5a3a08aaf31c386177e3ad61579eb260f639bcf1eb216a8948b",
-    "ChaiPhoto/AppSettings.swift": "45e0c369a02ecd5fc07c77409499faca40d3fec3426964456f1e7a5c8e62a9f4",
-    "ChaiPhoto/AppUpdateManager.swift": "b114087fa252da612610e9bfe022b595150f172b615c735ed01521cb7e7565c2",
-    "ChaiPhoto/AssetImage.swift": "53e50f3a1e9ec48f25599855fece2e5c9bbcaf944600b65c7de83086ed4bf58d",
+    "ChaiPhoto/AppExperiencePolicy.swift": "4f46b3d7f818b44b83583d04c7a06cdb33a27dd3fbb34245b3220715fa0bc837",
+    "ChaiPhoto/AppSettings.swift": "37bfce085a5c0426568d6cdb1632211c58df5233787923482f0bd6954d58dd19",
+    "ChaiPhoto/AppUpdateManager.swift": "13587e93675b12efc2d55afb2557ee971c0241ee5bd4b440e48596fc388f57f5",
+    "ChaiPhoto/AssetImage.swift": "27da166d3a87d2f89b872d49350782251ef46aaa0a045e56075c18fac8c65e05",
     "ChaiPhoto/Assets.xcassets/AppIcon.appiconset/AppIcon.png": "4b78b0501751b1d5a05d49a36a240218fc96ceaa829f1790a584f340425778e0",
     "ChaiPhoto/Assets.xcassets/AppIcon.appiconset/Contents.json": "1b2cc6b6e1ad340faeaae5f07d292eb20c7a22c9995ac8795ea6aa604efa491d",
     "ChaiPhoto/Assets.xcassets/Contents.json": "10e3b5dc202f1cd9fad1f688c8fc9fe9e9669bf3f8295e67d216b10fd99b6f49",
     "ChaiPhoto/ChaiPhotoApp.swift": "3bf2d8125868f0ab91323fbbddb45edccf3316445f4e2ff8aa3aae73ac9c57d9",
-    "ChaiPhoto/ContentView.swift": "0d96e0b9d2c1522b2fd1e6e24e13df264a6543e3cc0e9797aad1c2682cacb42b",
+    "ChaiPhoto/ContentView.swift": "bc40daedfbd4f4fabcd823400519c746aec65c085a5dfeafdefd920a37f0cb54",
     "ChaiPhoto/Info.plist": "a5442921ce386384db82c75dd04d05638397d183d0e2232691b28170d5a47718",
     "ChaiPhoto/InteractionTutorialView.swift": "0d986488a768f8a7d8a271dc88c867d6c09e030389f68de7482462629cca21a2",
     "ChaiPhoto/MediaFilter.swift": "0b317d35caee1136b524eac290998fdefe233bbea70c678ab2996d8f130c8575",
@@ -25,6 +25,6 @@
     "ChaiPhoto/ReviewView.swift": "6264922256c7975fd092669829fb93289f32223d9f724252e96bd4324eccf8f2",
     "ChaiPhoto/SortCompletionView.swift": "911996ef0522c158745ace4f9d57bb1b4c8c5d4097d0772e47996cea2b216c3c",
     "ChaiPhoto/VideoFeedView.swift": "974777717394d3dc23e49d8e5a5f9d2b88379452b91d6e3cbbd822af49bee165",
-    "ChaiPhoto/WelcomeGuide.swift": "2f619fde3030951a41f041fa5748a91b40f3489c74d9c1544633b04817afbfb2"
+    "ChaiPhoto/WelcomeGuide.swift": "dca8a5b87a5989155a6940819f6976f0221fdcc9077561708bbc0437f0a84fed"
   }
 }

@@ -245,16 +245,9 @@ struct AssetPreview: View {
             set: { settings.showCloudPhotoPrompt = $0 }
         )) {
             Button(L("暫不載入", "Not now"), role: .cancel) { settings.declineCloudPhotosForNow() }
-            if settings.preloadPreset == .off {
-                Button(L("只下載這張", "Download this photo")) { settings.allowCloudPhotoItem() }
-            } else {
-                Button(L("本次允許", "Allow this session")) { settings.allowCloudPhotosThisSession() }
-                Button(L("始終允許", "Always allow")) { settings.allowCloudPhoto = true }
-            }
+            Button(L("只下載這張", "Download this photo")) { settings.allowCloudPhotoItem() }
         } message: {
-            Text(settings.preloadPreset == .off
-                 ? L("只下載這張照片。可到設定更改預載模式。", "Download this photo only. Change preloading in Settings.")
-                 : L("下載可能使用行動數據。可到設定更改預載模式。", "Downloads may use cellular data. Change preloading in Settings."))
+            Text(L("只下載這張照片。可在設定調整預載與始終下載允許。", "Download this photo only. Adjust preloading and always-allow permissions in Settings."))
         }
         .onDisappear {
             if settings.cloudPhotoPromptInPreview { settings.declineCloudPhotosForNow() }
@@ -868,16 +861,9 @@ struct LocalVideoView: View {
                 settings.cloudPromptHandled = true
             }
 
-            if settings.preloadPreset == .off {
-                Button(L("只下載這部", "Download this video")) { settings.allowCloudVideoItem(asset.localIdentifier) }
-            } else {
-                Button(L("本次允許", "Allow this session")) { settings.cloudSessionAllowed = true }
-                Button(L("始終允許", "Always allow")) { settings.allowCloudVideo = true }
-            }
+            Button(L("只下載這部", "Download this video")) { settings.allowCloudVideoItem(asset.localIdentifier) }
         } message: {
-            Text(settings.preloadPreset == .off
-                 ? L("只下載這部影片。可到設定更改預載模式。", "Download this video only. Change preloading in Settings.")
-                 : L("下載可能使用行動數據。可到設定更改預載模式。", "Downloads may use cellular data. Change preloading in Settings."))
+            Text(L("只下載這部影片。可在設定調整預載與始終下載允許。", "Download this video only. Adjust preloading and always-allow permissions in Settings."))
         }
         .fullScreenCover(isPresented: $showFullscreen) {
             SharedVideoFullscreenView(
