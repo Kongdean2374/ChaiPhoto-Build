@@ -109,6 +109,7 @@ struct SortView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var mediaPreloader: MediaPreloader
+    @EnvironmentObject private var updateManager: AppUpdateManager
 
     @State private var filter = MediaFilter.restored()
     @State private var showFilter = false
