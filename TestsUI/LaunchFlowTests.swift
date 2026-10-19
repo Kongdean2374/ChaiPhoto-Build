@@ -3,7 +3,7 @@ import XCTest
 final class LaunchFlowTests: XCTestCase {
     override func record(_ issue: XCTIssue) {
         print("UI test issue: \(issue.compactDescription)")
-        let attachment = XCTAttachment(screenshot: XCUIApplication().screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "visual-failure"
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -19,21 +19,29 @@ final class LaunchFlowTests: XCTestCase {
         func allowFullPhotoAccess(_ alert: XCUIElement) -> Bool {
             let allow = alert.buttons.matching(fullAccess).firstMatch
             guard allow.exists else {
-                print("Unhandled permission alert buttons: \(alert.buttons.allElementsBoundByIndex.map(\.label))")
+                XCTFail("Unrecognized Photos permission alert buttons: \(alert.buttons.allElementsBoundByIndex.map(\.label))")
                 return false
             }
+            print("Photos access handler selecting: \(allow.label)")
             allow.tap()
             return true
         }
         // Install before launch: the hosted unit-test app may already have requested
         // Photos access. XCTest's default interruption handler otherwise taps Don't Allow.
         let interruption = addUIInterruptionMonitor(withDescription: "Allow synthetic CI Photos access") { alert in
-            allowFullPhotoAccess(alert)
+            let title = alert.label.lowercased()
+            guard title.contains("photo") || title.contains("照片") || title.contains("相片") else { return false }
+            return allowFullPhotoAccess(alert)
         }
         defer { removeUIInterruptionMonitor(interruption) }
-        app.launch()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let systemAlert = springboard.alerts.firstMatch
+        // The unit-test host can leave its Photos consent alert on screen. Resolve
+        // that real alert before the visual app process reads authorization state.
+        if systemAlert.waitForExistence(timeout: 2) {
+            XCTAssertTrue(allowFullPhotoAccess(systemAlert))
+        }
+        app.launch()
         let permission = app.buttons["photo-access-button"]
         if systemAlert.waitForExistence(timeout: 3) {
             XCTAssertTrue(allowFullPhotoAccess(systemAlert), "An existing Photos alert must grant full access, never use the default denial handler")

@@ -73,5 +73,49 @@ class VisualEvidenceTests(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in output.iterdir()), ["jpeg.jpg", "screenshot.png"])
 
 
+class AdditionalVisualEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.bundle = self.root / "synthetic.xcresult"
+        self.output = self.root / "Release-TestFlight"
+        self.raw = self.root / "Release-TestFlight-raw"
+        self.raw.mkdir()
+        (self.raw / "extensionless-image").write_bytes(b"\x89PNG\r\n\x1a\nsynthetic image bytes")
+        (self.raw / "nested").mkdir()
+        (self.raw / "nested" / "extensionless-jpeg").write_bytes(b"\xff\xd8\xffsynthetic image bytes")
+        (self.raw / "hierarchy.txt").write_text("Do not upload raw UI hierarchy")
+        (self.raw / "recording.mp4").write_bytes(b"Do not upload screen recordings")
+
+    def assert_images_only(self):
+        self.assertEqual(sorted(p.name for p in self.output.iterdir()), [
+            "extensionless-image.png", "nested__extensionless-jpeg.jpg"
+        ])
+        self.assertEqual((self.output / "extensionless-image.png").read_bytes(),
+                         (self.raw / "extensionless-image").read_bytes())
+
+    def test_extensionless_and_nested_images_are_retained_without_raw_attachments(self):
+        with patch.object(COLLECTOR.subprocess, "check_output", return_value=json.dumps({"result": "Failed"})), \
+             patch.object(COLLECTOR.subprocess, "run"):
+            self.assertEqual(COLLECTOR.collect(self.bundle, self.output), 2)
+        self.assert_images_only()
+
+    def test_summary_failure_does_not_prevent_export_or_image_retention(self):
+        with patch.object(COLLECTOR.subprocess, "check_output", side_effect=subprocess.CalledProcessError(1, "summary")), \
+             patch.object(COLLECTOR.subprocess, "run") as export:
+            with self.assertRaisesRegex(RuntimeError, "summary failed"):
+                COLLECTOR.collect(self.bundle, self.output)
+            export.assert_called_once()
+        self.assert_images_only()
+
+    def test_partial_export_failure_still_retains_available_images(self):
+        with patch.object(COLLECTOR.subprocess, "check_output", return_value="{}"), \
+             patch.object(COLLECTOR.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "export")):
+            with self.assertRaisesRegex(RuntimeError, "export failed"):
+                COLLECTOR.collect(self.bundle, self.output)
+        self.assert_images_only()
+
+
 if __name__ == "__main__":
     unittest.main()
