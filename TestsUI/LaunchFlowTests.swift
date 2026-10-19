@@ -1,6 +1,15 @@
 import XCTest
 
 final class LaunchFlowTests: XCTestCase {
+    override func record(_ issue: XCTIssue) {
+        print("UI test issue: \(issue.compactDescription)")
+        let attachment = XCTAttachment(screenshot: XCUIApplication().screenshot())
+        attachment.name = "visual-failure"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        super.record(issue)
+    }
+
     // Captures the real app using only CI-generated Photos assets, never a mock UI.
     func testCaptureVisualReview() {
         continueAfterFailure = false
@@ -11,9 +20,16 @@ final class LaunchFlowTests: XCTestCase {
         if permission.waitForExistence(timeout: 3) {
             permission.tap()
             let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-            let allow = springboard.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完整存取' OR label CONTAINS '所有照片'")).firstMatch
-            XCTAssertTrue(allow.waitForExistence(timeout: 8))
-            allow.tap()
+            // Permission alerts can belong to the app or SpringBoard, depending on iOS.
+            let fullAccess = NSPredicate(format: "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完整存取' OR label CONTAINS '所有照片'")
+            let appAllow = app.buttons.matching(fullAccess).firstMatch
+            let systemAllow = springboard.buttons.matching(fullAccess).firstMatch
+            let alert = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                appAllow.exists || systemAllow.exists
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [alert], timeout: 12), .completed,
+                           "The Photos full-access button must be found in the app or SpringBoard alert")
+            if appAllow.exists { appAllow.tap() } else { systemAllow.tap() }
         }
         finishGuide(app)
         let mark = app.buttons["photo-mark-delete"]
@@ -53,10 +69,13 @@ final class LaunchFlowTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 10))
         capture("05-sort-dark-en-large")
+        app.buttons["Filters"].tap()
+        capture("06-filters-dark-en-large")
+        app.buttons["Cancel"].tap()
         app.tabBars.buttons["Review"].tap()
-        capture("06-review-dark-en-large")
+        capture("07-review-dark-en-large")
         app.tabBars.buttons["Settings"].tap()
-        capture("07-settings-dark-en-large")
+        capture("08-settings-dark-en-large")
         app.terminate()
     }
 

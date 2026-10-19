@@ -43,6 +43,7 @@
     "project-tests.yml",
     "project.yml",
     "scripts/build_unsigned.sh",
+    "scripts/collect_visual_review.py",
     "scripts/delivery_diagnostics.py",
     "scripts/install_toolchain.sh",
     "scripts/make_visual_fixtures.py",

@@ -65,33 +65,50 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_ID" -b
           python3 scripts/make_visual_fixtures.py "$RUNNER_TEMP/visual-fixtures"
           xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP"/visual-fixtures/*.png
+          status=0
           for config in Release-TestFlight Release-AppStore; do
-            xcodebuild -quiet -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
+            if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
               -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
               -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
               -resultBundlePath "$RUNNER_TEMP/test-$config.xcresult" \
               -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
-              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test
-            echo "XCTest + lifecycle UI $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test; then
+              echo "XCTest + lifecycle UI $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              status=1
+              echo "XCTest + lifecycle UI $config: FAIL" >> "$GITHUB_STEP_SUMMARY"
+            fi
           done
+          exit "$status"
       - name: Export actual simulator screenshot attachments
         if: always()
         shell: bash
+        env:
+          TESTS_SUCCEEDED: ${{ job.status == 'success' }}
         run: |
           set -euo pipefail
+          status=0
           for config in Release-TestFlight Release-AppStore; do
             bundle="$RUNNER_TEMP/test-$config.xcresult"
             if test -d "$bundle"; then
-              mkdir -p "$RUNNER_TEMP/visual-review/$config"
-              xcrun xcresulttool export attachments --path "$bundle" --output-path "$RUNNER_TEMP/visual-review/$config"
+              args=()
+              if test "$TESTS_SUCCEEDED" = true; then args+=(--require-complete); fi
+              if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" "${args[@]}"; then status=1; fi
+            elif test "$TESTS_SUCCEEDED" = true; then
+              status=1
             fi
           done
+          exit "$status"
       - name: Retain synthetic simulator screenshots only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: visual-review-${{ github.sha }}
-          path: ${{ runner.temp }}/visual-review/**/*.png
+          path: |
+            ${{ runner.temp }}/visual-review/Release-TestFlight/*.png
+            ${{ runner.temp }}/visual-review/Release-TestFlight/*.jpg
+            ${{ runner.temp }}/visual-review/Release-AppStore/*.png
+            ${{ runner.temp }}/visual-review/Release-AppStore/*.jpg
           if-no-files-found: warn
           retention-days: 3
           compression-level: 0
