@@ -73,7 +73,12 @@ final class LaunchFlowTests: XCTestCase {
         }
         capture("01-sort-light-zh")
         for _ in 0..<2 {
-            let remaining = app.staticTexts["sort-remaining"]
+            // SwiftUI may expose Text as StaticText or Other on newer iOS.
+            // Require the exact unique identifier and its displayed count either way.
+            let matches = app.descendants(matching: .any).matching(identifier: "sort-remaining")
+            let remaining = matches.firstMatch
+            XCTAssertTrue(remaining.waitForExistence(timeout: 5), "The visible remaining count must be exposed independently of the summary container")
+            XCTAssertEqual(matches.count, 1, "The remaining count must have a unique accessibility identifier")
             let count = Int(remaining.label.replacingOccurrences(of: ",", with: "")) ?? 0
             XCTAssertGreaterThan(count, 1)
             mark.tap()

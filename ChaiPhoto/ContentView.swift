@@ -394,7 +394,8 @@ struct SortView: View {
         .padding(14)
         .modifier(ChaiPanel())
         .padding(.horizontal, 14)
-        .accessibilityIdentifier("sort-summary")
+        // An identifier on this container propagates to its Text descendants in
+        // SwiftUI and masks the remaining-count identifier used by UI acceptance.
     }
 
     private var limitedAccessRow: some View {
