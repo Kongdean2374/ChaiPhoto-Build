@@ -25,7 +25,15 @@ struct ThumbnailSignature: Codable {
             context.draw(cg, in: CGRect(x: 0, y: 0, width: 9, height: 8)); return true
         }
         guard ok else { return nil }
-        let luminance = (0..<72).map { i in (Int(rgba[i * 4]) * 299 + Int(rgba[i * 4 + 1]) * 587 + Int(rgba[i * 4 + 2]) * 114) / 1000 }
+        var luminance = [Int]()
+        luminance.reserveCapacity(72)
+        for i in 0..<72 {
+            let offset = i * 4
+            let red = Int(rgba[offset]) * 299
+            let green = Int(rgba[offset + 1]) * 587
+            let blue = Int(rgba[offset + 2]) * 114
+            luminance.append((red + green + blue) / 1000)
+        }
         // Blank/low-detail images are too ambiguous for safe visual grouping.
         guard (luminance.max() ?? 0) - (luminance.min() ?? 0) >= 24 else { return nil }
         var hash: UInt64 = 0
