@@ -25,7 +25,7 @@ and provisioning. Release assets and this source are publicly downloadable.
 
 ## Versions
 
-Marketing version is 1.3.0. The owner confirmed 1.2.5 is already approved; raising
+Marketing version is 1.2.7, explicitly selected by the owner for this update. The owner confirmed 1.2.5 is already approved; raising
 only a build number cannot reopen that approved version's upload train.
 Enter an explicit positive build number from 1 to
 9999; this conservative project limit is not a claim about all Apple formats.
@@ -182,7 +182,7 @@ your newly confirmed number. TestFlight retains the even-number policy.
 Apple upload methods: https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/
 Apple delivery status: https://developer.apple.com/help/app-store-connect/manage-builds/view-builds-and-metadata/
 
-## 1.3.0 local-preview analysis
+## 1.2.7 local-preview analysis
 
 Opt-in analysis indexes PHAsset dates, dimensions, types, bursts, Favorite state and
 album membership before comparing bounded candidates. It uses existing local

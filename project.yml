@@ -51,7 +51,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tw.chai2374.ChaiPhoto
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "1.3.0"
+        MARKETING_VERSION: "1.2.7"
         CURRENT_PROJECT_VERSION: "31"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: ChaiPhoto/Info.plist
