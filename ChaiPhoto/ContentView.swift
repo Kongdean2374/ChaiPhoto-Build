@@ -118,6 +118,7 @@ struct AccessView: View {
 }
 
 struct SortView: View {
+    @EnvironmentObject private var analysis: MediaAnalysis
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var mediaPreloader: MediaPreloader
@@ -184,7 +185,7 @@ struct SortView: View {
             "|pn:\(settings.canPreloadPhotoNetwork)" +
             "|vn:\(settings.canPreloadVideoNetwork)"
 
-        return ids + "|" + counts + "|" + modes + "|r:\(library.revision)|active:\(scenePhase == .active)"
+        return ids + "|f:\(filter.kind)|" + counts + "|" + modes + "|r:\(library.revision)|active:\(scenePhase == .active)"
     }
 
     private var preloadCandidates: [PHAsset] {
@@ -217,7 +218,7 @@ struct SortView: View {
                 SortCompletionView(result: result, nextMonth: filter.timeMode == "month" ? Calendar.current.date(byAdding: .month, value: 1, to: filter.start) : nil,
                     onNext: { next in
                         completion = nil
-                        filter.setMonth(next); filter.resolve(); filter.persist()
+                        filter.setMonth(next); filter.resolveAnalysis(analysis); filter.persist()
                     }, onOther: {
                         completion = nil
                         Task { @MainActor in
@@ -265,7 +266,7 @@ struct SortView: View {
     var body: some View {
         presentedContent
             .onAppear {
-                filter.resolve()
+                filter.resolveAnalysis(analysis)
                 resumeAssetID = filter.restoredResumeAssetID()
                 sessionFilter = filter
                 sessionIDs = Set(scope.map(\.localIdentifier))
@@ -293,8 +294,9 @@ struct SortView: View {
                 presentTutorialIfNeeded(for: currentAsset)
             }
             .onChange(of: currentAsset?.localIdentifier) { _, _ in cancelPhotoShare() }
+            .onChange(of: analysis.revision) { _, _ in filter.resolveAnalysis(analysis) }
             .onChange(of: library.revision) { _, _ in
-                filter.resolve()
+                filter.resolveAnalysis(analysis)
                 sessionIDs.formUnion(scope.map(\.localIdentifier))
             }
             .onDisappear {
@@ -332,7 +334,7 @@ struct SortView: View {
         }
         .padding(.top, 2)
         .task(id: preloadTaskKey) {
-            guard scenePhase == .active else { mediaPreloader.clear(); return }
+            guard scenePhase == .active, !filter.isComparison else { mediaPreloader.clear(); return }
             mediaPreloader.prepareNext(
                 preloadCandidates,
                 keepingCurrentID: currentAsset?.localIdentifier,
@@ -351,7 +353,7 @@ struct SortView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(filter.title)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
+                        .lineLimit(filter.isAnalysis ? 2 : 1)
 
                     Text(filter.timeTitle)
                         .font(.caption2)
@@ -397,7 +399,12 @@ struct SortView: View {
     @ViewBuilder
     private var currentMediaSection: some View {
         if let current = currentAsset {
-            if current.mediaType == .video {
+            if filter.isComparison {
+                let groups = filter.kind == "appVideoDuplicates" ? analysis.videoDuplicateGroups : analysis.duplicateGroups
+                let ids = Set(groups.first { $0.contains(current.localIdentifier) } ?? [current.localIdentifier])
+                let members = scope.filter { ids.contains($0.localIdentifier) }
+                AnalysisComparisonView(assets: members, evidence: analysis.evidence(for: current.localIdentifier), remaining: members.filter { library.decisions[$0.localIdentifier] == nil }.count)
+            } else if current.mediaType == .video {
                 videoSection(current)
             } else {
                 photoSection(current)

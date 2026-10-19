@@ -43,9 +43,9 @@ struct MediaFilter: Equatable {
             return MediaFilter()
         }
 
-        let validKinds: Set<String> = saved.source == "videos" ? ["all", "slow", "timelapse", "favorites"] : [
+        let validKinds: Set<String> = saved.source == "videos" ? ["all", "slow", "timelapse", "favorites", "appVideoDuplicates", "appLarge"] : [
             "all", "screenshots", "live", "selfies",
-            "panoramas", "bursts", "favorites"
+            "panoramas", "bursts", "favorites", "appDuplicates"
         ]
         let restoredKind = validKinds.contains(saved.kind) ? saved.kind : "all"
 
@@ -146,8 +146,17 @@ struct MediaFilter: Equatable {
         end = calendar.date(byAdding: .day, value: -1, to: calendar.date(byAdding: .month, value: 1, to: start) ?? start) ?? start
         timeMode = "month"; dateEnabled = true
     }
+    var isAnalysis: Bool { ["appDuplicates", "appVideoDuplicates", "appLarge"].contains(kind) }
+    var isComparison: Bool { kind == "appDuplicates" || kind == "appVideoDuplicates" }
+    @MainActor mutating func resolveAnalysis(_ analysis: MediaAnalysis) {
+        resolve()
+        if kind == "appDuplicates" { allowedIDs = analysis.duplicateIDs }
+        if kind == "appVideoDuplicates" { allowedIDs = analysis.videoDuplicateIDs }
+        if kind == "appLarge" { allowedIDs = analysis.largeVideoIDs }
+    }
     func kindTitle(_ kind: String) -> String {
         switch kind {
+        case "appDuplicates": return L("App 辨識・相似照片", "App analysis · Similar photos")
         case "screenshots": return L("截圖", "Screenshots")
         case "live": return "Live Photo"
         case "selfies": return L("自拍", "Selfies")
@@ -159,6 +168,8 @@ struct MediaFilter: Equatable {
     }
     func videoKindTitle(_ kind: String) -> String {
         switch kind {
+        case "appVideoDuplicates": return L("App 辨識・疑似重複影片", "App analysis · Possible duplicate videos")
+        case "appLarge": return L("App 辨識・長片／高解析度", "App analysis · Long / high-resolution")
         case "slow": return L("慢動作", "Slow motion")
         case "timelapse": return L("縮時攝影", "Time-lapse")
         case "favorites": return L("喜愛影片", "Favorite videos")
@@ -167,6 +178,7 @@ struct MediaFilter: Equatable {
     }
     mutating func resolve() {
         allowedIDs = nil
+        if isAnalysis { allowedIDs = []; return }
         var collection: PHAssetCollection?
         if source == "album" {
             collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject
@@ -193,6 +205,7 @@ struct MediaFilter: Equatable {
 }
 
 struct FilterView: View {
+    @EnvironmentObject private var analysis: MediaAnalysis
     @Binding var filter: MediaFilter
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var settings: AppSettings
@@ -232,7 +245,7 @@ struct FilterView: View {
                         next.start = draft.start
                         next.end = max(draft.start, draft.end)
                         if draft.timeMode == "month" { next.setMonth(draft.start) }
-                        next.resolve()
+                        next.resolveAnalysis(analysis)
                         filter = next
                         filter.persist()
                         dismiss()
@@ -266,7 +279,7 @@ struct FilterView: View {
             if selected.timeMode == "month" {
                 photoSnapshot.setMonth(selected.start)
             }
-            photoSnapshot.resolve()
+            photoSnapshot.resolveAnalysis(analysis)
             photoSnapshot.persist()
         }
 
@@ -276,7 +289,7 @@ struct FilterView: View {
         if selected.timeMode == "month" {
             next.setMonth(selected.start)
         }
-        next.resolve()
+        next.resolveAnalysis(analysis)
 
         filter = next
         filter.persist()
@@ -306,6 +319,7 @@ struct FilterView: View {
 
 
 private struct FilterSubcategoryView: View {
+    @EnvironmentObject private var analysis: MediaAnalysis
     @Binding var draft: MediaFilter
     let source: String
     let albums: [PHAssetCollection]
@@ -337,6 +351,23 @@ private struct FilterSubcategoryView: View {
                     } label: {
                         row(source == "photos" ? draft.kindTitle(kind) : draft.videoKindTitle(kind), selected: draft.source == source && draft.kind == kind)
                     }
+                }
+            }
+            if source != "album" {
+                Section(L("App 辨識", "App analysis")) {
+                    if analysis.hasResults {
+                        ForEach(source == "photos" ? ["appDuplicates"] : ["appVideoDuplicates", "appLarge"], id: \.self) { kind in
+                            Button {
+                                draft.source = source; draft.kind = kind
+                                draft.albumID = ""; draft.albumName = ""
+                                onSelect(draft)
+                            } label: {
+                                row(source == "photos" ? draft.kindTitle(kind) : draft.videoKindTitle(kind), selected: draft.source == source && draft.kind == kind)
+                            }
+                        }
+                        Text(analysis.coverage).font(.caption).foregroundStyle(.secondary)
+                    }
+                    NavigationLink(L("辨識設定與進度", "Analysis settings & progress")) { AnalysisSettingsView() }
                 }
             }
         }

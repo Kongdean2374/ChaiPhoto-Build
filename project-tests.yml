@@ -26,6 +26,7 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources:
+      - path: Tests/AnalysisRegressionTests.swift
       - path: Tests/StateRegressionTests.swift
       - path: Tests/ExperienceRegressionTests.swift
     dependencies:

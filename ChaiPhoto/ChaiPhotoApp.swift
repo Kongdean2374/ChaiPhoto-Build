@@ -2,20 +2,10 @@ import SwiftUI
 
 @main
 struct ChaiPhotoApp: App {
-    init() {
-        UserDefaults.standard.removeObject(forKey: "analysis.enabled")
-        let support = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        )[0]
-        try? FileManager.default.removeItem(
-            at: support.appendingPathComponent("media-analysis.json")
-        )
-    }
-
     @StateObject private var settings = AppSettings()
     @StateObject private var library = PhotoLibraryStore()
     @StateObject private var mediaPreloader = MediaPreloader()
+    @StateObject private var analysis = MediaAnalysis()
     @StateObject private var updateManager = AppUpdateManager()
     @Environment(\.dynamicTypeSize) private var systemTextSize
     @Environment(\.scenePhase) private var scenePhase
@@ -24,6 +14,8 @@ struct ChaiPhotoApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .modifier(AnalysisLifecycle())
+                .environmentObject(analysis)
                 .environmentObject(library)
                 .environmentObject(settings)
                 .environmentObject(mediaPreloader)

@@ -71,6 +71,8 @@ struct WelcomeGuide: View {
             Text(L("照片左右滑標記保留／待刪；刪除方向可在「一般」調整。", "Swipe photos to keep or mark for deletion; choose the direction in General."))
             Text(L("影片上滑下一部、下滑復原；點一下播放／暫停，左右雙擊快轉／倒退。",
                    "Videos: swipe up for next, down to undo; tap to play/pause, double-tap sides to seek."))
+            Divider()
+            AnalysisOnboardingControl()
         }
     }
 }

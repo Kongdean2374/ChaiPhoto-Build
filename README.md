@@ -25,7 +25,7 @@ and provisioning. Release assets and this source are publicly downloadable.
 
 ## Versions
 
-Marketing version is 1.2.6. The owner confirmed 1.2.5 is already approved; raising
+Marketing version is 1.3.0. The owner confirmed 1.2.5 is already approved; raising
 only a build number cannot reopen that approved version's upload train.
 Enter an explicit positive build number from 1 to
 9999; this conservative project limit is not a claim about all Apple formats.
@@ -86,7 +86,7 @@ through the established authorized process. No feedback or website token is held
 
 ## Local build and snapshot updates
 
-This 1.2.6 snapshot starts each new process in Sort and keeps the current tab when
+This snapshot starts each new process in Sort and keeps the current tab when
 returning from the background. Fresh installs get a resumable three-step setup;
 existing preferences and sorting progress are preserved. The General setup page
 shares its controls with Settings: preload speed and always-download permissions
@@ -181,3 +181,32 @@ your newly confirmed number. TestFlight retains the even-number policy.
 
 Apple upload methods: https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/
 Apple delivery status: https://developer.apple.com/help/app-store-connect/manage-builds/view-builds-and-metadata/
+
+## 1.3.0 local-preview analysis
+
+Opt-in analysis indexes PHAsset dates, dimensions, types, bursts, Favorite state and
+album membership before comparing bounded candidates. It uses existing local
+384 px Photos thumbnails/posters, Vision revision 2 and a thumbnail hash for close
+matches. Analysis/preheating never enables network access. A current/next 100-item
+window bounds thumbnail preparation; unchanged successful features are stored in
+individual local files and reused by identifier/modification date. Missing local
+previews are expected coverage limits, not reasons to download originals.
+
+Video candidates combine duration, resolution, date/album metadata and poster
+features. Only available local file-backed AVAssets can provide five small sampled
+frames; unavailable/composed assets remain poster-only. UI distinguishes similar,
+highly suspected duplicate, poster-only and sampled-frame evidence. None proves
+byte-identical originals. Long/high-resolution filters do not measure file sizes.
+The comparison grid is local-thumbnail-only; explicitly opening a full preview or
+playback uses the existing download consent flow. Analysis can be stopped, disabled
+or cleared without changing photos, review choices or history. Leaving the active
+app, Low Power Mode and serious thermal states pause work.
+
+Candidate counts, metadata families, album keys and preheat windows are bounded;
+cross-date/different-type/distant copies can be missed. Vision thresholds are
+heuristics, not probabilities. Physical-device iCloud coverage, match quality,
+large-library throughput and power usage are not established by synthetic tests.
+Local analysis stores identifiers, metadata, feature prints and group results in
+the app sandbox; it neither uploads those data nor performs identity recognition.
+Disabling retains cache; Settings > App analysis > Clear removes it. No originals
+are stored by analysis and no automatic deletion occurs.

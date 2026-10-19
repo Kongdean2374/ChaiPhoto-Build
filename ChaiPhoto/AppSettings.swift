@@ -532,6 +532,7 @@ struct SettingsView: View {
                     categoryLink(.appearance)
                     categoryLink(.sorting)
                     categoryLink(.media)
+                    NavigationLink { AnalysisSettingsView() } label: { Label(L("App 辨識・僅本機預覽", "App analysis · local previews"), systemImage: "sparkle.magnifyingglass") }
                 }
                 Section(L("支援與資訊", "Support & information")) {
                     categoryLink(.support)
