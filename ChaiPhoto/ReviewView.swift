@@ -5,6 +5,7 @@ struct ReviewView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var updateManager: AppUpdateManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var estimator = SizeEstimator()
     @State private var preview: PreviewSelection?
     @State private var restoreTarget: PreviewSelection?
@@ -196,6 +197,9 @@ struct ReviewView: View {
     private var footer: some View {
         let ids = library.selectedPending
         let summary = estimator.summary(ids)
+        let actionLayout = dynamicTypeSize >= .xxLarge
+            ? AnyLayout(VStackLayout(spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
         return VStack(alignment: .leading, spacing: 9) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -204,6 +208,7 @@ struct ReviewView: View {
                         "Ready to delete \(ids.count) items"
                     ))
                     .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
 
                     Text(L(
                         "待刪清單共 \(library.pending.count) 項",
@@ -211,6 +216,7 @@ struct ReviewView: View {
                     ))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -220,11 +226,13 @@ struct ReviewView: View {
                         estimator.stop()
                     }
                     .font(.caption)
+                    .fixedSize(horizontal: true, vertical: false)
                 } else {
                     Button(L("估算容量", "Estimate size")) {
                         estimator.start(library.pending)
                     }
                     .font(.caption)
+                    .fixedSize(horizontal: true, vertical: false)
                 }
             }
 
@@ -241,6 +249,7 @@ struct ReviewView: View {
                 )
                 .font(.subheadline)
                 .monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             if estimator.running {
@@ -256,7 +265,8 @@ struct ReviewView: View {
             ))
             .font(.caption2)
             .foregroundStyle(.secondary)
-            HStack(spacing: 10) {
+            .fixedSize(horizontal: false, vertical: true)
+            actionLayout {
                 Button {
                     estimator.stop()
                     let restored = library.returnToSorting(ids)
@@ -268,8 +278,12 @@ struct ReviewView: View {
                         L("復原 \(ids.count) 項", "Restore \(ids.count) items"),
                         systemImage: "arrow.uturn.backward.circle"
                     )
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
+                    .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
@@ -288,8 +302,12 @@ struct ReviewView: View {
                         L("刪除 \(ids.count) 項", "Delete \(ids.count) items"),
                         systemImage: "trash"
                     )
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
+                    .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
@@ -302,6 +320,7 @@ struct ReviewView: View {
             ))
             .font(.caption2)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }.padding(14).background(ChaiPalette.surface)
     }
 }
