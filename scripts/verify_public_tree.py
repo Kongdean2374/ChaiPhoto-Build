@@ -61,7 +61,7 @@ def verify(project=False):
     config = Path("project.yml").read_text()
     swift = {p for p in manifest["files"] if p.endswith(".swift")}
     source_paths = re.findall(r"^\s+- path: ([^\n]+)$", config, re.M)
-    if len(swift) != 25 or set(source_paths) != swift | {
+    if len(swift) != 21 or set(source_paths) != swift | {
         "ChaiPhoto/PrivacyInfo.xcprivacy", "ChaiPhoto/Assets.xcassets"
     } or len(source_paths) != len(swift) + 2:
         fail("Explicit project source/resource membership mismatch")

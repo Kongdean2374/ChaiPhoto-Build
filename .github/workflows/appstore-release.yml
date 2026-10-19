@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       build_number:
-        description: Reserved odd Apple build number, greater than existing builds
+        description: Reserved shared Apple build number, greater than all existing builds
         required: true
         type: string
 permissions:

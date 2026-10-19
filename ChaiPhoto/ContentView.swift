@@ -48,7 +48,7 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if !settings.showOnboarding, let notice = library.successNotice {
                 Label(notice, systemImage: "checkmark.circle.fill")
-                    .font(.callout).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                    .font(.callout.weight(.medium)).padding().modifier(ChaiPanel(tint: .green))
                     .padding().lineLimit(4).allowsHitTesting(false)
                     .accessibilityAddTraits(.isStaticText)
             }
@@ -74,7 +74,7 @@ struct ContentView: View {
             updateManager.setPresentationBlocked(presentationBlocked, reason: "root")
             await updateManager.checkAutomaticallyOnce()
         }
-        .tint(.indigo)
+        .tint(ChaiPalette.accent)
         .disabled(library.isDeleting)
         .alert(L("提醒", "Notice"), isPresented: Binding(
             get: { !settings.showOnboarding && !settings.reviewingOnboarding && !settings.showCloudPhotoPrompt && !settings.showCloudSessionPrompt && library.message != nil },
@@ -118,7 +118,6 @@ struct AccessView: View {
 }
 
 struct SortView: View {
-    @EnvironmentObject private var analysis: MediaAnalysis
     @EnvironmentObject private var library: PhotoLibraryStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var mediaPreloader: MediaPreloader
@@ -185,7 +184,7 @@ struct SortView: View {
             "|pn:\(settings.canPreloadPhotoNetwork)" +
             "|vn:\(settings.canPreloadVideoNetwork)"
 
-        return ids + "|f:\(filter.kind)|" + counts + "|" + modes + "|r:\(library.revision)|active:\(scenePhase == .active)"
+        return ids + "|" + counts + "|" + modes + "|r:\(library.revision)|active:\(scenePhase == .active)"
     }
 
     private var preloadCandidates: [PHAsset] {
@@ -210,6 +209,8 @@ struct SortView: View {
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease.circle")
                         .font(.title3)
+                        .frame(width: 44, height: 44)
+                        .background(ChaiPalette.accent.opacity(0.08), in: Circle())
                 }
                 .accessibilityLabel(L("篩選", "Filters"))
                 .disabled(!library.hasAccess)
@@ -218,7 +219,7 @@ struct SortView: View {
                 SortCompletionView(result: result, nextMonth: filter.timeMode == "month" ? Calendar.current.date(byAdding: .month, value: 1, to: filter.start) : nil,
                     onNext: { next in
                         completion = nil
-                        filter.setMonth(next); filter.resolveAnalysis(analysis); filter.persist()
+                        filter.setMonth(next); filter.resolve(); filter.persist()
                     }, onOther: {
                         completion = nil
                         Task { @MainActor in
@@ -266,7 +267,7 @@ struct SortView: View {
     var body: some View {
         presentedContent
             .onAppear {
-                filter.resolveAnalysis(analysis)
+                filter.resolve()
                 resumeAssetID = filter.restoredResumeAssetID()
                 sessionFilter = filter
                 sessionIDs = Set(scope.map(\.localIdentifier))
@@ -294,9 +295,8 @@ struct SortView: View {
                 presentTutorialIfNeeded(for: currentAsset)
             }
             .onChange(of: currentAsset?.localIdentifier) { _, _ in cancelPhotoShare() }
-            .onChange(of: analysis.revision) { _, _ in filter.resolveAnalysis(analysis) }
             .onChange(of: library.revision) { _, _ in
-                filter.resolveAnalysis(analysis)
+                filter.resolve()
                 sessionIDs.formUnion(scope.map(\.localIdentifier))
             }
             .onDisappear {
@@ -334,7 +334,7 @@ struct SortView: View {
         }
         .padding(.top, 2)
         .task(id: preloadTaskKey) {
-            guard scenePhase == .active, !filter.isComparison else { mediaPreloader.clear(); return }
+            guard scenePhase == .active else { mediaPreloader.clear(); return }
             mediaPreloader.prepareNext(
                 preloadCandidates,
                 keepingCurrentID: currentAsset?.localIdentifier,
@@ -348,12 +348,17 @@ struct SortView: View {
     }
 
     private var statsRow: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: filter.source == "videos" ? "play.rectangle.fill" : filter.source == "album" ? "rectangle.stack.fill" : "photo.fill")
+                    .font(.body.weight(.semibold)).foregroundStyle(ChaiPalette.accent)
+                    .frame(width: 36, height: 36)
+                    .background(ChaiPalette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
                     Text(filter.title)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(filter.isAnalysis ? 2 : 1)
+                        .lineLimit(2)
 
                     Text(filter.timeTitle)
                         .font(.caption2)
@@ -363,9 +368,12 @@ struct SortView: View {
 
                 Spacer(minLength: 8)
 
-                Text(L("\(queue.count) 未看", "\(queue.count) unseen"))
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.indigo)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(queue.count, format: .number).font(.title3.bold().monospacedDigit()).accessibilityIdentifier("sort-remaining")
+                    Text(L("剩餘未看", "Remaining")).font(.caption2)
+                }
+                .foregroundStyle(ChaiPalette.accent)
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             ProgressView(value: sortingProgress)
@@ -383,13 +391,10 @@ struct SortView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            LinearGradient(colors: [Color.indigo.opacity(0.14), Color(uiColor: .secondarySystemBackground)], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .padding(.horizontal, 10)
+        .padding(14)
+        .modifier(ChaiPanel())
+        .padding(.horizontal, 14)
+        .accessibilityIdentifier("sort-summary")
     }
 
     private var limitedAccessRow: some View {
@@ -399,12 +404,7 @@ struct SortView: View {
     @ViewBuilder
     private var currentMediaSection: some View {
         if let current = currentAsset {
-            if filter.isComparison {
-                let groups = filter.kind == "appVideoDuplicates" ? analysis.videoDuplicateGroups : analysis.duplicateGroups
-                let ids = Set(groups.first { $0.contains(current.localIdentifier) } ?? [current.localIdentifier])
-                let members = scope.filter { ids.contains($0.localIdentifier) }
-                AnalysisComparisonView(assets: members, evidence: analysis.evidence(for: current.localIdentifier), remaining: members.filter { library.decisions[$0.localIdentifier] == nil }.count)
-            } else if current.mediaType == .video {
+            if current.mediaType == .video {
                 videoSection(current)
             } else {
                 photoSection(current)
@@ -527,8 +527,11 @@ struct SortView: View {
                 asset: current
             )
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .modifier(ChaiPanel())
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
     }
 
     private func choosePhoto(
@@ -617,6 +620,7 @@ struct SortView: View {
                         (decision == .delete ? Color.red : .green).opacity(0.13),
                         in: Circle()
                     )
+                    .overlay(Circle().strokeBorder((decision == .delete ? Color.red : .green).opacity(0.22), lineWidth: 1))
 
                 Text(
                     (left ? "← " : "") +
@@ -627,6 +631,7 @@ struct SortView: View {
             }
             .foregroundStyle(decision == .delete ? .red : .green)
         }
+        .accessibilityIdentifier(decision == .delete ? "photo-mark-delete" : "photo-keep")
     }
 
     private func sharePhoto(_ asset: PHAsset) {

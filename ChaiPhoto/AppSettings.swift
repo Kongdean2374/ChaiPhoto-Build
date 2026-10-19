@@ -265,14 +265,14 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 Image(systemName: item.symbol)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(item.color.gradient, in: RoundedRectangle(cornerRadius: 11))
+                    .foregroundStyle(item.color)
+                    .frame(width: 40, height: 40)
+                    .background(item.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title).foregroundStyle(.primary)
+                    Text(item.title).font(.body.weight(.semibold)).foregroundStyle(.primary)
                     Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
                 }
-            }.padding(.vertical, 5)
+            }.padding(.vertical, 8)
         }
     }
 
@@ -515,24 +515,27 @@ struct SettingsView: View {
             } else {
                 Section {
                     HStack(spacing: 16) {
-                        Image(systemName: "photo.stack.fill")
-                            .font(.system(size: 30, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 64, height: 64)
-                            .background(LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20))
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 18).fill(ChaiPalette.accent.opacity(0.10)).rotationEffect(.degrees(-9))
+                            RoundedRectangle(cornerRadius: 18).fill(ChaiPalette.accent.gradient)
+                            Image(systemName: "photo.stack.fill").font(.system(size: 28, weight: .semibold)).foregroundStyle(.white)
+                        }.frame(width: 60, height: 60).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 5) {
                             Text("ChaiPhoto").font(.title2.bold())
                             Text(L("讓回憶留下，讓空間自由。", "Keep the memories. Make room."))
                                 .font(.caption).foregroundStyle(.secondary)
-                            Text(versionLabel).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                            Text(versionLabel).font(.caption2.monospacedDigit().weight(.medium)).foregroundStyle(ChaiPalette.accent)
                         }
-                    }.padding(.vertical, 8)
+                    }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                        .modifier(ChaiPanel())
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("settings-brand")
                 }
                 Section(L("偏好設定", "Preferences")) {
                     categoryLink(.appearance)
                     categoryLink(.sorting)
                     categoryLink(.media)
-                    NavigationLink { AnalysisSettingsView() } label: { Label(L("App 辨識・僅本機預覽", "App analysis · local previews"), systemImage: "sparkle.magnifyingglass") }
                 }
                 Section(L("支援與資訊", "Support & information")) {
                     categoryLink(.support)

@@ -15,10 +15,6 @@ def resolve(check_only=False):
     flavor = os.environ.get("RELEASE_FLAVOR", "unsigned")
     if flavor not in {"unsigned", "testflight", "appstore"}:
         raise SystemExit("Invalid release flavor")
-    if flavor == "testflight" and int(build) % 2:
-        raise SystemExit("TestFlight uses even build numbers")
-    if flavor == "appstore" and not int(build) % 2:
-        raise SystemExit("App Store uses odd build numbers")
     if not check_only:
         result, count = re.subn(r'(^\s+CURRENT_PROJECT_VERSION: )"\d+"$',
                                lambda m: m[1] + '"' + build + '"', text, flags=re.M)

@@ -18,13 +18,9 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: ChaiPhoto/AnalysisLocalMedia.swift
-      - path: ChaiPhoto/AnalysisMetadata.swift
-      - path: ChaiPhoto/AnalysisViews.swift
-      - path: ChaiPhoto/AnalysisVision.swift
-      - path: ChaiPhoto/MediaAnalysis.swift
       - path: ChaiPhoto/ChaiPhotoApp.swift
       - path: ChaiPhoto/ContentView.swift
+      - path: ChaiPhoto/AppVisualStyle.swift
       - path: ChaiPhoto/AppSettings.swift
       - path: ChaiPhoto/AppExperiencePolicy.swift
       - path: ChaiPhoto/AppUpdateManager.swift

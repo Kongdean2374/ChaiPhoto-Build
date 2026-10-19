@@ -19,7 +19,8 @@ struct SortCompletionView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    Image(systemName: "checkmark.seal.fill").font(.system(size: 52)).foregroundStyle(.green)
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 42)).foregroundStyle(.green)
+                        .frame(width: 80, height: 80).background(Color.green.opacity(0.10), in: Circle())
                     Text(L("這個範圍整理完成", "Selection complete")).font(.title2.bold())
                     Text(result.title + "\n" + result.time).multilineTextAlignment(.center)
                     VStack(spacing: 12) {
@@ -27,7 +28,7 @@ struct SortCompletionView: View {
                         LabeledContent(L("已保留", "Kept"), value: String(result.kept))
                         LabeledContent(L("已標記待刪", "Marked for deletion"), value: String(result.marked))
                         LabeledContent(L("已由系統刪除", "Deleted by iOS"), value: String(result.deleted))
-                    }.padding().background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
+                    }.padding(18).modifier(ChaiPanel(tint: .green))
                     Text(L("以上為此範圍累計結果，包含先前整理的項目。待刪標記不代表已刪除，也不代表已釋放空間；請到待刪頁複查。", "These are cumulative results for this selection, including earlier decisions. Marked items are not yet deleted and no space recovery is implied. Review them in the Review tab.")).font(.caption).foregroundStyle(.secondary)
                     if let nextMonth {
                         Button(L("繼續整理 ", "Continue with ") + monthLabel(nextMonth)) { onNext(nextMonth) }.buttonStyle(.borderedProminent)

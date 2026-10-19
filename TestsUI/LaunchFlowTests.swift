@@ -1,6 +1,65 @@
 import XCTest
 
 final class LaunchFlowTests: XCTestCase {
+    // Captures the real app using only CI-generated Photos assets, never a mock UI.
+    func testCaptureVisualReview() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-language", "zh-Hant", "-appearance", "light", "-textSize", "standard", "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
+        app.launch()
+        let permission = app.buttons["photo-access-button"]
+        if permission.waitForExistence(timeout: 3) {
+            permission.tap()
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let allow = springboard.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完整存取' OR label CONTAINS '所有照片'")).firstMatch
+            XCTAssertTrue(allow.waitForExistence(timeout: 8))
+            allow.tap()
+        }
+        finishGuide(app)
+        let mark = app.buttons["photo-mark-delete"]
+        XCTAssertTrue(mark.waitForExistence(timeout: 12), "Synthetic Photos must be visible; do not substitute an empty permission screen")
+        let gotIt = app.buttons["知道了"]
+        if gotIt.waitForExistence(timeout: 4) {
+            for _ in 0..<3 { if gotIt.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(gotIt.isHittable); gotIt.tap()
+        }
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "visual-" + name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        capture("01-sort-light-zh")
+        for _ in 0..<2 {
+            let remaining = app.staticTexts["sort-remaining"]
+            let count = Int(remaining.label.replacingOccurrences(of: ",", with: "")) ?? 0
+            XCTAssertGreaterThan(count, 1)
+            mark.tap()
+            let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", String(count - 1)), object: remaining)
+            XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
+        }
+        app.buttons["篩選"].tap()
+        capture("02-filters-light-zh")
+        XCTAssertFalse(app.staticTexts["App 辨識"].exists)
+        app.buttons["取消"].tap()
+        app.tabBars.buttons["待刪"].tap()
+        capture("03-review-light-zh")
+        app.tabBars.buttons["設定"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settings-brand"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["App 辨識・僅本機預覽"].exists)
+        capture("04-settings-light-zh")
+        app.terminate()
+        app.launchArguments = ["-language", "en", "-appearance", "dark", "-textSize", "extra", "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
+        app.launch()
+        XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 10))
+        capture("05-sort-dark-en-large")
+        app.tabBars.buttons["Review"].tap()
+        capture("06-review-dark-en-large")
+        app.tabBars.buttons["Settings"].tap()
+        capture("07-settings-dark-en-large")
+        app.terminate()
+    }
+
     private func finishGuide(_ app: XCUIApplication) {
         // Complete only by using real UI; no launch flag bypasses onboarding.
         for _ in 0..<6 {

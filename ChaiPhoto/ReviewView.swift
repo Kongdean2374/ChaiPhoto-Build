@@ -64,7 +64,9 @@ struct ReviewView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 12)
+                    .padding(14)
+                    .modifier(ChaiPanel(tint: .red))
+                    .padding(.horizontal, 14)
 
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 8) {
@@ -84,6 +86,10 @@ struct ReviewView: View {
                                         }
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 12).strokeBorder(
+                                            library.exclusions.contains(asset.localIdentifier) ? Color.clear : ChaiPalette.accent.opacity(0.75), lineWidth: 1.5)
+                                    }
                                     .contentShape(Rectangle())
                                     .gesture(LongPressGesture(minimumDuration: 0.35).exclusively(before: TapGesture()).onEnded { result in
                                         switch result {
@@ -296,7 +302,7 @@ struct ReviewView: View {
             ))
             .font(.caption2)
             .foregroundStyle(.secondary)
-        }.padding(14).background(.regularMaterial)
+        }.padding(14).background(ChaiPalette.surface)
     }
 }
 

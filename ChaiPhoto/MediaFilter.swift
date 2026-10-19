@@ -43,9 +43,9 @@ struct MediaFilter: Equatable {
             return MediaFilter()
         }
 
-        let validKinds: Set<String> = saved.source == "videos" ? ["all", "slow", "timelapse", "favorites", "appVideoDuplicates", "appLarge"] : [
+        let validKinds: Set<String> = saved.source == "videos" ? ["all", "slow", "timelapse", "favorites"] : [
             "all", "screenshots", "live", "selfies",
-            "panoramas", "bursts", "favorites", "appDuplicates"
+            "panoramas", "bursts", "favorites"
         ]
         let restoredKind = validKinds.contains(saved.kind) ? saved.kind : "all"
 
@@ -62,6 +62,9 @@ struct MediaFilter: Equatable {
         )
 
         filter.resolve()
+        // Build 66 could persist an analysis-only scope. Normalize just its kind;
+        // keep the media source, date range, decisions and normal resume cursors.
+        if restoredKind != saved.kind { filter.persist() }
         return filter
     }
 
@@ -146,17 +149,8 @@ struct MediaFilter: Equatable {
         end = calendar.date(byAdding: .day, value: -1, to: calendar.date(byAdding: .month, value: 1, to: start) ?? start) ?? start
         timeMode = "month"; dateEnabled = true
     }
-    var isAnalysis: Bool { ["appDuplicates", "appVideoDuplicates", "appLarge"].contains(kind) }
-    var isComparison: Bool { kind == "appDuplicates" || kind == "appVideoDuplicates" }
-    @MainActor mutating func resolveAnalysis(_ analysis: MediaAnalysis) {
-        resolve()
-        if kind == "appDuplicates" { allowedIDs = analysis.duplicateIDs }
-        if kind == "appVideoDuplicates" { allowedIDs = analysis.videoDuplicateIDs }
-        if kind == "appLarge" { allowedIDs = analysis.largeVideoIDs }
-    }
     func kindTitle(_ kind: String) -> String {
         switch kind {
-        case "appDuplicates": return L("App 辨識・相似照片", "App analysis · Similar photos")
         case "screenshots": return L("截圖", "Screenshots")
         case "live": return "Live Photo"
         case "selfies": return L("自拍", "Selfies")
@@ -168,8 +162,6 @@ struct MediaFilter: Equatable {
     }
     func videoKindTitle(_ kind: String) -> String {
         switch kind {
-        case "appVideoDuplicates": return L("App 辨識・疑似重複影片", "App analysis · Possible duplicate videos")
-        case "appLarge": return L("App 辨識・長片／高解析度", "App analysis · Long / high-resolution")
         case "slow": return L("慢動作", "Slow motion")
         case "timelapse": return L("縮時攝影", "Time-lapse")
         case "favorites": return L("喜愛影片", "Favorite videos")
@@ -178,7 +170,6 @@ struct MediaFilter: Equatable {
     }
     mutating func resolve() {
         allowedIDs = nil
-        if isAnalysis { allowedIDs = []; return }
         var collection: PHAssetCollection?
         if source == "album" {
             collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject
@@ -204,8 +195,25 @@ struct MediaFilter: Equatable {
     }
 }
 
+// Only retired analysis artifacts in our app container are eligible for removal.
+// Photos, sorting-state files and all other application data are left untouched.
+enum RetiredAnalysisMigration {
+    static func removeCache(in support: URL) throws {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: support.path) else { return }
+        let files = try manager.contentsOfDirectory(at: support, includingPropertiesForKeys: nil)
+        let prefix = "analysis-features-"
+        for file in files {
+            let name = file.lastPathComponent
+            let featureFolder = name.hasPrefix(prefix) && UUID(uuidString: String(name.dropFirst(prefix.count))) != nil
+            if name == "media-analysis.json" || featureFolder {
+                try manager.removeItem(at: file)
+            }
+        }
+    }
+}
+
 struct FilterView: View {
-    @EnvironmentObject private var analysis: MediaAnalysis
     @Binding var filter: MediaFilter
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var settings: AppSettings
@@ -245,7 +253,7 @@ struct FilterView: View {
                         next.start = draft.start
                         next.end = max(draft.start, draft.end)
                         if draft.timeMode == "month" { next.setMonth(draft.start) }
-                        next.resolveAnalysis(analysis)
+                        next.resolve()
                         filter = next
                         filter.persist()
                         dismiss()
@@ -279,7 +287,7 @@ struct FilterView: View {
             if selected.timeMode == "month" {
                 photoSnapshot.setMonth(selected.start)
             }
-            photoSnapshot.resolveAnalysis(analysis)
+            photoSnapshot.resolve()
             photoSnapshot.persist()
         }
 
@@ -289,7 +297,7 @@ struct FilterView: View {
         if selected.timeMode == "month" {
             next.setMonth(selected.start)
         }
-        next.resolveAnalysis(analysis)
+        next.resolve()
 
         filter = next
         filter.persist()
@@ -319,7 +327,6 @@ struct FilterView: View {
 
 
 private struct FilterSubcategoryView: View {
-    @EnvironmentObject private var analysis: MediaAnalysis
     @Binding var draft: MediaFilter
     let source: String
     let albums: [PHAssetCollection]
@@ -351,23 +358,6 @@ private struct FilterSubcategoryView: View {
                     } label: {
                         row(source == "photos" ? draft.kindTitle(kind) : draft.videoKindTitle(kind), selected: draft.source == source && draft.kind == kind)
                     }
-                }
-            }
-            if source != "album" {
-                Section(L("App 辨識", "App analysis")) {
-                    if analysis.hasResults {
-                        ForEach(source == "photos" ? ["appDuplicates"] : ["appVideoDuplicates", "appLarge"], id: \.self) { kind in
-                            Button {
-                                draft.source = source; draft.kind = kind
-                                draft.albumID = ""; draft.albumName = ""
-                                onSelect(draft)
-                            } label: {
-                                row(source == "photos" ? draft.kindTitle(kind) : draft.videoKindTitle(kind), selected: draft.source == source && draft.kind == kind)
-                            }
-                        }
-                        Text(analysis.coverage).font(.caption).foregroundStyle(.secondary)
-                    }
-                    NavigationLink(L("辨識設定與進度", "Analysis settings & progress")) { AnalysisSettingsView() }
                 }
             }
         }

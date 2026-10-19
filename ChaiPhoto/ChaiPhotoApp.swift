@@ -2,10 +2,23 @@ import SwiftUI
 
 @main
 struct ChaiPhotoApp: App {
+    init() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "analysis.enabled")
+        if !defaults.bool(forKey: "analysis.retired.v1") {
+            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try RetiredAnalysisMigration.removeCache(in: support)
+                    defaults.set(true, forKey: "analysis.retired.v1")
+                } catch { /* Retry only this retired cache cleanup on a later launch. */ }
+            }
+        }
+    }
+
     @StateObject private var settings = AppSettings()
     @StateObject private var library = PhotoLibraryStore()
     @StateObject private var mediaPreloader = MediaPreloader()
-    @StateObject private var analysis = MediaAnalysis()
     @StateObject private var updateManager = AppUpdateManager()
     @Environment(\.dynamicTypeSize) private var systemTextSize
     @Environment(\.scenePhase) private var scenePhase
@@ -14,8 +27,6 @@ struct ChaiPhotoApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .modifier(AnalysisLifecycle())
-                .environmentObject(analysis)
                 .environmentObject(library)
                 .environmentObject(settings)
                 .environmentObject(mediaPreloader)

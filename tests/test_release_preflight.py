@@ -68,6 +68,12 @@ class ReleasePreflightTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "Build must exceed"):
                 self.run_check("1.2.6", highest=highest)
 
+    def test_shared_sequence_allows_67_after_66_but_rejects_a_collision(self):
+        self.run_check("1.2.7", build="67", highest="66")
+        for highest in ["67", "68"]:
+            with self.subTest(highest=highest), self.assertRaisesRegex(SystemExit, "Build must exceed"):
+                self.run_check("1.2.7", build="67", highest=highest)
+
     def test_unknown_or_incomplete_metadata_stops_without_echo(self):
         for rows in [[], [version(state="SYNTHETIC_PRIVATE_STATE")],
                      [version("SYNTHETIC_PRIVATE_VERSION")], [{"attributes": {}}]]:

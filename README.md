@@ -18,37 +18,28 @@ schedule, tag or workflow_run delivery triggers.
 | Build Unsigned IPA | iPhoneOS ARM64 Beta-flavor IPA | No Apple credentials | Public Release, checksum and build summary |
 | Upload TestFlight | Manual signed upload | testflight environment | Apple only |
 | Upload App Store | Production-flavor signed upload | appstore environment | Apple only |
-| Validate Reviewed Snapshot | Both unsigned iPhoneOS flavors, XCTest and lifecycle UI tests | No Apple credentials | No release or artifact |
+| Validate Reviewed Snapshot | Both unsigned iPhoneOS flavors, XCTest and lifecycle UI tests | No Apple credentials | Synthetic simulator PNGs (3 days) |
 
 Unsigned IPA files cannot be installed directly. Downloaders supply their own signing
 and provisioning. Release assets and this source are publicly downloadable.
 
 ## Versions
 
-Marketing version is 1.2.7, explicitly selected by the owner for this update. The owner confirmed 1.2.5 is already approved; raising
-only a build number cannot reopen that approved version's upload train.
-Enter an explicit positive build number from 1 to
-9999; this conservative project limit is not a claim about all Apple formats.
-TestFlight uses even numbers; App Store uses odd numbers. Neither Apple workflow
-uses the repository run number. Check the existing Apple build sequence and reserve
-a number before dispatch. Read-only Apple API checks verify the latest approved
-iOS marketing version and the build sequence before certificate import or compilation.
-The marketing version must exceed every approved/released version, including versions
-pending release or removed from distribution. Unknown states, incomplete metadata,
-inaccessible APIs or pagination limits stop delivery. Both current and legacy Apple
-state field names are supported. The checks cannot guarantee final Apple validation
-or prevent cross-repository races.
+Marketing version remains 1.2.7 by explicit owner instruction. Both Apple delivery
+channels now share one increasing build sequence; parity has no channel meaning.
+Use an unused positive integer from 1 to 9999, greater than Apple's highest build
+across both channels. The current target is 67 only if still unused and above the
+live Apple maximum; Build 66 is already uploaded and must not be reused.
+Source and validation commits do not reserve build numbers. Never rerun a previous
+upload; dispatch the exact validated main SHA with the newly confirmed build.
+The repository build setting is only a placeholder.
 
-The owner reports 1.2.6 (58) is already in TestFlight; builds 60 and 62 were also uploaded.
-Never reuse these numbers. Each new TestFlight upload must use an unused even build
-above Apple's highest existing build, confirmed by live preflight. Source changes
-and validation builds do not reserve a number. The repository build setting remains
-a placeholder; Apple uploads require separate owner authorization.
-
-The concurrency lock is shared between the two Apple workflows only within this
-repository. Never deliver from the private and public repositories at the same time.
-Cross-repository Apple fallback remains unverified; private workflow changes require
-separate authorization.
+Existing live Apple preflight still runs before certificate import and compilation.
+It rejects a used or lower build, closed marketing-version trains, unknown states,
+inaccessible APIs and incomplete/paginated metadata. Both workflows retain the same
+Apple-upload concurrency group, protected environments, local signing and one upload
+attempt. Cross-repository/manual uploads still require coordination. No secret,
+identity, permission or production-release authorization changes are implied.
 
 ## Apple setup — not configured or executed during initial delivery
 
@@ -177,36 +168,29 @@ the binary. Before a new manually authorized attempt, check TestFlight Build Upl
 and processing status, confirm the newest build sequence, and reserve a fresh
 explicit build number. The workflow does not retry uploads or reuse build numbers
 automatically. Do not rerun a historical job: dispatch the updated main SHA and
-your newly confirmed number. TestFlight retains the even-number policy.
+your newly confirmed number. Both channels use the shared increasing build sequence.
 
 Apple upload methods: https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/
 Apple delivery status: https://developer.apple.com/help/app-store-connect/manage-builds/view-builds-and-metadata/
 
-## 1.2.7 local-preview analysis
+## 1.2.7 follow-up: remove analysis and refine the interface
 
-Opt-in analysis indexes PHAsset dates, dimensions, types, bursts, Favorite state and
-album membership before comparing bounded candidates. It uses existing local
-384 px Photos thumbnails/posters, Vision revision 2 and a thumbnail hash for close
-matches. Analysis/preheating never enables network access. A current/next 100-item
-window bounds thumbnail preparation; unchanged successful features are stored in
-individual local files and reused by identifier/modification date. Missing local
-previews are expected coverage limits, not reasons to download originals.
+App-generated photo/video similarity analysis, comparison views and its filter
+entries have been removed, using stable source 6dfcd4996951e130fe12db0cf816c7ae503b5088
+as the integration baseline. Existing sorting, ordinary/date/album filters,
+onboarding, preloading and decisions/history remain. Retired saved filter kinds
+normalize to all items of the same media source while keeping dates and ordinary
+resume cursors. A utility cleanup removes only the retired analysis JSON and
+UUID-named feature folders from app storage, never Photos or sorting files.
 
-Video candidates combine duration, resolution, date/album metadata and poster
-features. Only available local file-backed AVAssets can provide five small sampled
-frames; unavailable/composed assets remain poster-only. UI distinguishes similar,
-highly suspected duplicate, poster-only and sampled-frame evidence. None proves
-byte-identical originals. Long/high-resolution filters do not measure file sizes.
-The comparison grid is local-thumbnail-only; explicitly opening a full preview or
-playback uses the existing download consent flow. Analysis can be stopped, disabled
-or cleared without changing photos, review choices or history. Leaving the active
-app, Low Power Mode and serious thermal states pause work.
+Visual refinement uses adaptive opaque surfaces, restrained static gradients,
+thin borders and consistent typography/spacing. There are no looping animations,
+new scan tasks or heavy blur effects in the new styling.
 
-Candidate counts, metadata families, album keys and preheat windows are bounded;
-cross-date/different-type/distant copies can be missed. Vision thresholds are
-heuristics, not probabilities. Physical-device iCloud coverage, match quality,
-large-library throughput and power usage are not established by synthetic tests.
-Local analysis stores identifiers, metadata, feature prints and group results in
-the app sandbox; it neither uploads those data nor performs identity recognition.
-Disabling retains cache; Settings > App analysis > Clear removes it. No originals
-are stored by analysis and no automatic deletion occurs.
+Manual validation uses a fresh iPhone 17 Pro simulator containing only six
+generated landscape/portrait PNGs. Real UI tests capture sorting, filters, review
+and settings in light Traditional Chinese and dark English with large text.
+Only exported PNG attachments are retained for three days; no original media,
+signing data or full result/log bundles are published. This is a validation-only
+artifact, not an App Store screenshot submission. Compilation/test success is
+separate from human visual inspection and physical-device performance acceptance.
