@@ -15,22 +15,40 @@ final class LaunchFlowTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-language", "zh-Hant", "-appearance", "light", "-textSize", "standard", "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
-        app.launch()
-        let permission = app.buttons["photo-access-button"]
-        if permission.waitForExistence(timeout: 3) {
-            permission.tap()
-            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-            // Permission alerts can belong to the app or SpringBoard, depending on iOS.
-            let fullAccess = NSPredicate(format: "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完整存取' OR label CONTAINS '所有照片'")
-            let appAllow = app.buttons.matching(fullAccess).firstMatch
-            let systemAllow = springboard.buttons.matching(fullAccess).firstMatch
-            let alert = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                appAllow.exists || systemAllow.exists
-            }, object: nil)
-            XCTAssertEqual(XCTWaiter.wait(for: [alert], timeout: 12), .completed,
-                           "The Photos full-access button must be found in the app or SpringBoard alert")
-            if appAllow.exists { appAllow.tap() } else { systemAllow.tap() }
+        let fullAccess = NSPredicate(format: "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完整存取' OR label CONTAINS '所有照片'")
+        func allowFullPhotoAccess(_ alert: XCUIElement) -> Bool {
+            let allow = alert.buttons.matching(fullAccess).firstMatch
+            guard allow.exists else {
+                print("Unhandled permission alert buttons: \(alert.buttons.allElementsBoundByIndex.map(\.label))")
+                return false
+            }
+            allow.tap()
+            return true
         }
+        // Install before launch: the hosted unit-test app may already have requested
+        // Photos access. XCTest's default interruption handler otherwise taps Don't Allow.
+        let interruption = addUIInterruptionMonitor(withDescription: "Allow synthetic CI Photos access") { alert in
+            allowFullPhotoAccess(alert)
+        }
+        defer { removeUIInterruptionMonitor(interruption) }
+        app.launch()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let systemAlert = springboard.alerts.firstMatch
+        let permission = app.buttons["photo-access-button"]
+        if systemAlert.waitForExistence(timeout: 3) {
+            XCTAssertTrue(allowFullPhotoAccess(systemAlert), "An existing Photos alert must grant full access, never use the default denial handler")
+        } else if app.alerts.firstMatch.exists {
+            XCTAssertTrue(allowFullPhotoAccess(app.alerts.firstMatch))
+        } else if permission.waitForExistence(timeout: 3) {
+            permission.tap()
+            if systemAlert.waitForExistence(timeout: 3) {
+                XCTAssertTrue(allowFullPhotoAccess(systemAlert))
+            } else if app.alerts.firstMatch.exists {
+                XCTAssertTrue(allowFullPhotoAccess(app.alerts.firstMatch))
+            }
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["photo-access-full"].waitForExistence(timeout: 10),
+                      "Full Photos access must actually be granted before visual review")
         finishGuide(app)
         let mark = app.buttons["photo-mark-delete"]
         XCTAssertTrue(mark.waitForExistence(timeout: 12), "Synthetic Photos must be visible; do not substitute an empty permission screen")

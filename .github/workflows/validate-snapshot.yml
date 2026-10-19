@@ -91,9 +91,11 @@ jobs:
           for config in Release-TestFlight Release-AppStore; do
             bundle="$RUNNER_TEMP/test-$config.xcresult"
             if test -d "$bundle"; then
-              args=()
-              if test "$TESTS_SUCCEEDED" = true; then args+=(--require-complete); fi
-              if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" "${args[@]}"; then status=1; fi
+              if test "$TESTS_SUCCEEDED" = true; then
+                if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" --require-complete; then status=1; fi
+              elif ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config"; then
+                status=1
+              fi
             elif test "$TESTS_SUCCEEDED" = true; then
               status=1
             fi

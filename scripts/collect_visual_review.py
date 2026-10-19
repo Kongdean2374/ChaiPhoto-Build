@@ -11,12 +11,17 @@ import sys
 
 
 def collect(bundle, destination):
-    summary = subprocess.check_output([
-        "xcrun", "xcresulttool", "get", "test-results", "summary", "--path", str(bundle)
-    ], text=True)
-    result = json.loads(summary)
-    fields = ("title", "result", "passedTests", "failedTests", "skippedTests", "testFailures")
-    print("XCTest result:", json.dumps({k: result[k] for k in fields if k in result}, ensure_ascii=False))
+    summary_error = None
+    try:
+        summary = subprocess.check_output([
+            "xcrun", "xcresulttool", "get", "test-results", "summary", "--path", str(bundle)
+        ], text=True)
+        result = json.loads(summary)
+        fields = ("title", "result", "passedTests", "failedTests", "skippedTests", "testFailures")
+        print("XCTest result:", json.dumps({k: result[k] for k in fields if k in result}, ensure_ascii=False))
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        summary_error = error
+        print("XCTest summary unavailable; exporting screenshots independently:", type(error).__name__)
     raw = destination.parent / (destination.name + "-raw")
     raw.mkdir(parents=True, exist_ok=True)
     subprocess.run([
@@ -36,6 +41,8 @@ def collect(bundle, destination):
             print("Retained simulator screenshot:", target.name)
             count += 1
     print(f"{bundle.name}: {count} real screenshot attachment(s)")
+    if summary_error is not None:
+        raise RuntimeError("XCTest summary failed; screenshot export was still attempted") from summary_error
     return count
 
 
