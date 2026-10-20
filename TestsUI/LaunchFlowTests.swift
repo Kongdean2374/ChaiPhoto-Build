@@ -1,6 +1,23 @@
 import XCTest
 
 final class LaunchFlowTests: XCTestCase {
+    private func scrollPage(_ app: XCUIApplication) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.72))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.28))
+        start.press(forDuration: 0.01, thenDragTo: end)
+    }
+
+    private func reachable(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        let target = app.descendants(matching: .any).matching(identifier: id).firstMatch
+        for _ in 0..<8 {
+            if target.exists && target.isHittable { break }
+            scrollPage(app)
+        }
+        XCTAssertTrue(target.waitForExistence(timeout: 5), id)
+        XCTAssertTrue(target.isHittable, "Must scroll to the real reachable control: " + id)
+        return target
+    }
+
     override func record(_ issue: XCTIssue) {
         print("UI test issue: \(issue.compactDescription)")
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -158,10 +175,10 @@ final class LaunchFlowTests: XCTestCase {
     func testGeneralGuideShowsDownloadControlsAndSharesPreferencesWithSettings() {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments = ["-language", "en", "-appearance", "light", "-textSize", "standard", "-preload.mode.v3", "off", "-autoplay", "NO"]
         app.launch(); finishGuide(app)
         app.tabBars.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "設定", "Settings")).firstMatch.tap()
-        let info = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label == %@", "紀錄與關於", "History & about")).firstMatch
-        XCTAssertTrue(info.waitForExistence(timeout: 5)); info.tap()
+        reachable(app, "settings-information").tap()
         let revisit = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "重新檢視首次導覽", "Revisit getting started")).firstMatch
         XCTAssertTrue(revisit.waitForExistence(timeout: 5)); revisit.tap()
         let next = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "下一步", "Next")).firstMatch
@@ -171,7 +188,7 @@ final class LaunchFlowTests: XCTestCase {
         modes.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "積極", "Aggressive")).firstMatch.tap()
         for id in ["always-download-photos", "always-download-videos"] {
             let control = app.switches[id]
-            for _ in 0..<4 { if control.isHittable { break }; app.swipeUp() }
+            for _ in 0..<4 { if control.isHittable { break }; scrollPage(app) }
             XCTAssertTrue(control.exists); XCTAssertTrue(control.isEnabled)
             if control.value as? String != "1" { control.tap() }
         }
@@ -180,8 +197,7 @@ final class LaunchFlowTests: XCTestCase {
         finishGuide(app)
         // Closing a reviewed guide keeps the existing Settings navigation stack.
         app.navigationBars.buttons.firstMatch.tap()
-        let media = app.staticTexts.matching(NSPredicate(format: "label == %@ OR label == %@", "播放與 iCloud", "Playback & iCloud")).firstMatch
-        XCTAssertTrue(media.waitForExistence(timeout: 5)); media.tap()
+        reachable(app, "settings-media").tap()
         XCTAssertEqual(app.switches["always-download-photos"].value as? String, "1")
         XCTAssertEqual(app.switches["always-download-videos"].value as? String, "1")
         app.switches["always-download-photos"].tap()

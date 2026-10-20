@@ -60,6 +60,35 @@ final class LocalizationFlowTests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
 
+    private func scrollPage(_ app: XCUIApplication, up: Bool = true) {
+        // The middle of the guide contains native picker wheels. A whole-app
+        // swipe there changes the chosen language/preload mode, not the page.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: up ? 0.72 : 0.28))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: up ? 0.28 : 0.72))
+        start.press(forDuration: 0.01, thenDragTo: end)
+    }
+
+    private func assertInitialLanguage(_ app: XCUIApplication, name: String) {
+        let wheel = app.pickerWheels.firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 5), "The actual native language choice must be visible")
+        XCTAssertEqual(wheel.value as? String, name, "Scrolling the page must not change the suggested language")
+    }
+
+    private func currentFixtureFilename(_ app: XCUIApplication) -> String {
+        // LabeledContent combines its translated title and value in one label.
+        // Match only the synthetic filename, never "File"/"Fichier" or public.png.
+        let pattern = "visual-fixture-[0-9]+[.]png$"
+        let matches = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", ".*" + pattern))
+        XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(matches.count, 1, "The real current photo must have one unambiguous fixture filename")
+        let label = matches.firstMatch.label
+        guard let range = label.range(of: pattern, options: .regularExpression) else {
+            XCTFail("Current Photos filename is missing: " + label)
+            return ""
+        }
+        return String(label[range])
+    }
+
     private func tap(_ app: XCUIApplication, _ id: String, scroll: Bool = false) {
         var target = element(app, id)
         if ["review-cancel-delete", "diagnostics-cancel", "album-new-cancel"].contains(id), !target.exists {
@@ -69,7 +98,7 @@ final class LocalizationFlowTests: XCTestCase {
         }
         XCTAssertTrue(target.waitForExistence(timeout: 8), id)
         if scroll {
-            for _ in 0..<8 { if target.isHittable { break }; app.swipeUp() }
+            for _ in 0..<8 { if target.isHittable { break }; scrollPage(app) }
         }
         XCTAssertTrue(target.isHittable, "Must remain reachable at the real screen size: " + id)
         target.tap()
@@ -112,8 +141,10 @@ final class LocalizationFlowTests: XCTestCase {
                     app.launch()
                     XCTAssertLessThanOrEqual(app.frame.width, 375, "This matrix must really run on the narrow simulator")
                     XCTAssertTrue(element(app, "confirm-app-language").waitForExistence(timeout: 10))
+                    assertInitialLanguage(app, name: language.name)
                     capture(app, prefix, "01-language")
-                    app.swipeUp(); app.swipeUp()
+                    scrollPage(app); scrollPage(app)
+                    assertInitialLanguage(app, name: language.name)
                     capture(app, prefix, "39-language-bottom")
                     tap(app, "confirm-app-language")
                     XCTAssertTrue(element(app, "photo-access-full").waitForExistence(timeout: 10),
@@ -121,10 +152,10 @@ final class LocalizationFlowTests: XCTestCase {
                     capture(app, prefix, "02-guide-access")
                     tap(app, "guide-next")
                     capture(app, prefix, "03-guide-general")
-                    app.swipeUp(); app.swipeUp()
+                    scrollPage(app); scrollPage(app)
                     capture(app, prefix, "04-guide-general-bottom")
                     tap(app, "guide-next")
-                    app.swipeDown(); app.swipeDown()
+                    scrollPage(app, up: false); scrollPage(app, up: false)
                     capture(app, prefix, "05-guide-safety")
                     tap(app, "guide-next")
                     XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 12), "A real synthetic photo must render")
@@ -139,7 +170,7 @@ final class LocalizationFlowTests: XCTestCase {
 
                     tap(app, "photo-information")
                     capture(app, prefix, "07-media-information")
-                    app.swipeUp(); capture(app, prefix, "08-media-information-bottom")
+                    scrollPage(app); capture(app, prefix, "08-media-information-bottom")
                     tap(app, "media-info-close")
 
                     element(app, "rendered-media-image").swipeUp()
@@ -189,14 +220,14 @@ final class LocalizationFlowTests: XCTestCase {
                     tab(app, 1)
                     capture(app, prefix, "13-review")
                     let delete = element(app, "review-delete-selected")
-                    for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
+                    for _ in 0..<8 { if delete.isHittable { break }; scrollPage(app) }
                     for id in ["review-delete-selected", "review-restore-selected"] {
                         let button = element(app, id)
                         XCTAssertTrue(button.isHittable, id)
                         XCTAssertGreaterThanOrEqual(button.frame.height, 44, id)
                         XCTAssertFalse(button.label.contains("…"), id)
                     }
-                    app.swipeUp()
+                    scrollPage(app)
                     capture(app, prefix, "14-review-bottom")
                     tap(app, "review-delete-selected", scroll: true)
                     XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
@@ -213,7 +244,7 @@ final class LocalizationFlowTests: XCTestCase {
                             XCTAssertEqual(element(app, "app-language-picker").value as? String, language.name)
                         }
                         if category == "media" {
-                            app.swipeUp(); app.swipeUp()
+                            scrollPage(app); scrollPage(app)
                             capture(app, prefix, "20-media-bottom")
                         }
                         if category == "support" {
@@ -227,7 +258,7 @@ final class LocalizationFlowTests: XCTestCase {
                     capture(app, prefix, "23-information")
                     tap(app, "information-gestures", scroll: true)
                     capture(app, prefix, "24-gestures")
-                    app.swipeUp(); app.swipeUp()
+                    scrollPage(app); scrollPage(app)
                     capture(app, prefix, "25-gestures-bottom")
                     back(app)
                     tap(app, "information-history", scroll: true)
@@ -295,9 +326,7 @@ final class LocalizationFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 12))
         tap(app, "photo-mark-delete")
         tap(app, "photo-information")
-        let filenames = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH[c] '.png'"))
-        XCTAssertTrue(filenames.firstMatch.waitForExistence(timeout: 5))
-        let before = filenames.allElementsBoundByIndex.map(\.label).sorted()
+        let before = currentFixtureFilename(app)
         tap(app, "media-info-close")
         let remaining = element(app, "sort-remaining").label
         tab(app, 1)
@@ -312,7 +341,7 @@ final class LocalizationFlowTests: XCTestCase {
         tab(app, 0)
         XCTAssertEqual(element(app, "sort-remaining").label, remaining)
         tap(app, "photo-information")
-        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH[c] '.png'")).allElementsBoundByIndex.map(\.label).sorted(), before)
+        XCTAssertEqual(currentFixtureFilename(app), before)
         tap(app, "media-info-close")
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(ja)", "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
@@ -320,6 +349,9 @@ final class LocalizationFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 12))
         XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, "Trier")
         XCTAssertEqual(element(app, "sort-remaining").label, remaining)
+        tap(app, "photo-information")
+        XCTAssertEqual(currentFixtureFilename(app), before, "A new process must keep the same current photo")
+        tap(app, "media-info-close")
         tab(app, 1)
         XCTAssertTrue(element(app, "review-delete-selected").label.hasPrefix("Supprimer \(pendingCount) "))
         tap(app, "review-restore-selected", scroll: true)

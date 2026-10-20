@@ -93,7 +93,9 @@ final class LocalizationRegressionTests: XCTestCase {
                 XCTAssertFalse(title.contains("%"), title)
                 XCTAssertFalse(title.isEmpty)
                 if language == .english {
-                    XCTAssertEqual(title, count == 1 ? "Delete 1 item" : "Delete \(count) items")
+                    let expected = count == 1 ? "Delete 1 item"
+                        : count == 1_001 ? "Delete 1,001 items" : "Delete \(count) items"
+                    XCTAssertEqual(title, expected)
                 }
                 if language == .french && count == 1 { XCTAssertEqual(title, "Supprimer 1 élément") }
                 if language == .spanish && count == 1 { XCTAssertEqual(title, "Borrar 1 elemento") }
