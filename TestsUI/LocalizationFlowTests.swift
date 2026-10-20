@@ -279,9 +279,23 @@ final class LocalizationFlowTests: XCTestCase {
                         tap(app, "photo-mark-delete")
                     }
                     XCTAssertFalse(app.buttons["photo-mark-delete"].exists)
+                    // Finishing the real queue automatically presents Summary.
+                    // Inspect and dismiss that sheet before touching the covered
+                    // completion screen; then verify its manual reopen action too.
+                    XCTAssertTrue(element(app, "summary-done").waitForExistence(timeout: 8),
+                                  "Finishing the selection must present the actual summary")
+                    capture(app, prefix, "32-summary")
+                    tap(app, "summary-done", scroll: true)
+                    let summaryButton = element(app, "sort-summary-button")
+                    let summaryClosed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                        summaryButton.exists && summaryButton.isHittable
+                    }, object: nil)
+                    XCTAssertEqual(XCTWaiter.wait(for: [summaryClosed], timeout: 5), .completed,
+                                   "Closing Summary must expose the real completion action")
                     capture(app, prefix, "33-sort-complete")
                     tap(app, "sort-summary-button")
-                    capture(app, prefix, "32-summary")
+                    XCTAssertTrue(element(app, "summary-done").waitForExistence(timeout: 8),
+                                  "View summary must reopen the actual summary")
                     tap(app, "summary-done", scroll: true)
                     tab(app, 1)
                     tap(app, "review-restore-selected", scroll: true)
