@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key> + %lld unknown ||  ＋ %lld 項未知</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string> ＋ %lld 項目は不明</string>
+			<key>other</key>
+			<string> ＋ %lld 項目は不明</string>
+		</dict>
+	</dict>
+	<key>%lld items are marked || 待刪清單共 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>削除予定は %lld 項目</string>
+			<key>other</key>
+			<string>削除予定は %lld 項目</string>
+		</dict>
+	</dict>
+	<key>%lld items || %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目</string>
+			<key>other</key>
+			<string>%lld 項目</string>
+		</dict>
+	</dict>
+	<key>%lld marked for deletion || 待刪 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目が削除予定</string>
+			<key>other</key>
+			<string>%lld 項目が削除予定</string>
+		</dict>
+	</dict>
+	<key>%lld selected for deletion || 目前選取 %lld 項準備刪除</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目を削除対象に選択中</string>
+			<key>other</key>
+			<string>%lld 項目を削除対象に選択中</string>
+		</dict>
+	</dict>
+	<key>Delete %lld items || 刪除 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目を削除</string>
+			<key>other</key>
+			<string>%lld 項目を削除</string>
+		</dict>
+	</dict>
+	<key>Deleted batches (%lld) || 實際刪除（%lld 批）</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>削除したグループ（%lld）</string>
+			<key>other</key>
+			<string>削除したグループ（%lld）</string>
+		</dict>
+	</dict>
+	<key>Moved %lld items back to review. || 已將 %lld 項移回待審。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目を未確認に戻しました。</string>
+			<key>other</key>
+			<string>%lld 項目を未確認に戻しました。</string>
+		</dict>
+	</dict>
+	<key>Ready to delete %lld items || 準備刪除 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目を削除予定</string>
+			<key>other</key>
+			<string>%lld 項目を削除予定</string>
+		</dict>
+	</dict>
+	<key>Restore %lld items || 復原 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld 項目を戻す</string>
+			<key>other</key>
+			<string>%lld 項目を戻す</string>
+		</dict>
+	</dict>
+	<key>Sorting actions (%lld) || 整理操作（%lld）</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>整理操作（%lld）</string>
+			<key>other</key>
+			<string>整理操作（%lld）</string>
+		</dict>
+	</dict>
+	<key>The app is about to ask iOS to delete %lld items. iOS will still show its system confirmation; deleted items normally go to Recently Deleted. || 即將要求 iOS 刪除 %lld 項。下一步仍會由 iOS 顯示系統確認；一般刪除後會進入「最近刪除」。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>App が iOS に %lld 項目の削除を要求します。続いて iOS の確認が表示されます。削除後は通常「最近削除した項目」に移動します。</string>
+			<key>other</key>
+			<string>App が iOS に %lld 項目の削除を要求します。続いて iOS の確認が表示されます。削除後は通常「最近削除した項目」に移動します。</string>
+		</dict>
+	</dict>
+	<key>iOS deleted %lld items. || 已交由系統刪除 %lld 項。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>iOS が %lld 項目を削除しました。</string>
+			<key>other</key>
+			<string>iOS が %lld 項目を削除しました。</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

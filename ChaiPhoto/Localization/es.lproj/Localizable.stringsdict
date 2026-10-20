@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key> + %lld unknown ||  ＋ %lld 項未知</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string> + %lld sin tamaño conocido</string>
+			<key>other</key>
+			<string> + %lld sin tamaño conocido</string>
+		</dict>
+	</dict>
+	<key>%lld items are marked || 待刪清單共 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Hay %lld elemento marcado</string>
+			<key>other</key>
+			<string>Hay %lld elementos marcados</string>
+		</dict>
+	</dict>
+	<key>%lld items || %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld elemento</string>
+			<key>other</key>
+			<string>%lld elementos</string>
+		</dict>
+	</dict>
+	<key>%lld marked for deletion || 待刪 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld elemento marcado para borrar</string>
+			<key>other</key>
+			<string>%lld elementos marcados para borrar</string>
+		</dict>
+	</dict>
+	<key>%lld selected for deletion || 目前選取 %lld 項準備刪除</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld elemento seleccionado para borrar</string>
+			<key>other</key>
+			<string>%lld elementos seleccionados para borrar</string>
+		</dict>
+	</dict>
+	<key>Delete %lld items || 刪除 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Borrar %lld elemento</string>
+			<key>other</key>
+			<string>Borrar %lld elementos</string>
+		</dict>
+	</dict>
+	<key>Deleted batches (%lld) || 實際刪除（%lld 批）</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Lote borrado (%lld)</string>
+			<key>other</key>
+			<string>Lotes borrados (%lld)</string>
+		</dict>
+	</dict>
+	<key>Moved %lld items back to review. || 已將 %lld 項移回待審。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Se ha devuelto %lld elemento a la revisión.</string>
+			<key>other</key>
+			<string>Se han devuelto %lld elementos a la revisión.</string>
+		</dict>
+	</dict>
+	<key>Ready to delete %lld items || 準備刪除 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Listo para borrar %lld elemento</string>
+			<key>other</key>
+			<string>Listo para borrar %lld elementos</string>
+		</dict>
+	</dict>
+	<key>Restore %lld items || 復原 %lld 項</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Restaurar %lld elemento</string>
+			<key>other</key>
+			<string>Restaurar %lld elementos</string>
+		</dict>
+	</dict>
+	<key>Sorting actions (%lld) || 整理操作（%lld）</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Acción de organización (%lld)</string>
+			<key>other</key>
+			<string>Acciones de organización (%lld)</string>
+		</dict>
+	</dict>
+	<key>The app is about to ask iOS to delete %lld items. iOS will still show its system confirmation; deleted items normally go to Recently Deleted. || 即將要求 iOS 刪除 %lld 項。下一步仍會由 iOS 顯示系統確認；一般刪除後會進入「最近刪除」。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>La app va a pedir a iOS que borre %lld elemento. iOS mostrará su confirmación; normalmente los elementos borrados van a Eliminado recientemente.</string>
+			<key>other</key>
+			<string>La app va a pedir a iOS que borre %lld elementos. iOS mostrará su confirmación; normalmente los elementos borrados van a Eliminado recientemente.</string>
+		</dict>
+	</dict>
+	<key>iOS deleted %lld items. || 已交由系統刪除 %lld 項。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>iOS ha borrado %lld elemento.</string>
+			<key>other</key>
+			<string>iOS ha borrado %lld elementos.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

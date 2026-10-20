@@ -3,6 +3,11 @@ import Foundation
 /// Prioritized new/restored media is never stranded behind a persisted cursor.
 /// The caller caches this result across animation frames.
 enum ReviewQueueOrdering {
+    static func prepending(_ incoming: [String], to existing: [String]) -> [String] {
+        var seen = Set<String>()
+        return (incoming + existing).filter { seen.insert($0).inserted }
+    }
+
     static func arrange<Element>(_ items: [Element], id: (Element) -> String,
                                  resumeID: String?, priorityIDs: [String]) -> [Element] {
         let lookup = Dictionary(uniqueKeysWithValues: items.map { (id($0), $0) })

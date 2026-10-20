@@ -1,0 +1,2 @@
+"NSPhotoLibraryUsageDescription" = "读取照片与视频供你整理，按你的操作调整喜爱项目和相册。只有你在待删页确认后，才会请求删除。";
+"CFBundleDisplayName" = "柴柴相册整理";

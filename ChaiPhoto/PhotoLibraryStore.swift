@@ -105,9 +105,13 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
         else if interactingAssetID == assetID { interactingAssetID = nil }
     }
 
-    override init() {
+    override convenience init() {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        saveURL = folder.appendingPathComponent("photo-choices.json")
+        self.init(saveURL: folder.appendingPathComponent("photo-choices.json"))
+    }
+
+    init(saveURL: URL) {
+        self.saveURL = saveURL
         if let data = try? Data(contentsOf: saveURL), let saved = try? JSONDecoder().decode(SavedChoices.self, from: data) {
             decisions = saved.decisions
             history = saved.history
@@ -449,8 +453,8 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
             return true
         } catch {
             message = favorite
-                ? L("無法加入喜好項目：" + error.localizedDescription, "Could not add to Favorites: " + error.localizedDescription)
-                : L("無法移出喜好項目：" + error.localizedDescription, "Could not remove from Favorites: " + error.localizedDescription)
+                ? L("無法加入喜好項目：\(appErrorMessage(error))", "Could not add to Favorites: \(appErrorMessage(error))")
+                : L("無法移出喜好項目：\(appErrorMessage(error))", "Could not remove from Favorites: \(appErrorMessage(error))")
             return false
         }
     }
@@ -466,8 +470,8 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
             return true
         } catch {
             message = L(
-                "無法加入相簿：" + error.localizedDescription,
-                "Could not add to album: " + error.localizedDescription
+                "無法加入相簿：\(appErrorMessage(error))",
+                "Could not add to album: \(appErrorMessage(error))"
             )
             return false
         }
@@ -498,8 +502,8 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
             ).firstObject
         } catch {
             message = L(
-                "無法建立相簿：" + error.localizedDescription,
-                "Could not create album: " + error.localizedDescription
+                "無法建立相簿：\(appErrorMessage(error))",
+                "Could not create album: \(appErrorMessage(error))"
             )
             return nil
         }
@@ -542,8 +546,8 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
             return true
         } catch {
             message = L(
-                "無法更新相簿：" + error.localizedDescription,
-                "Could not update albums: " + error.localizedDescription
+                "無法更新相簿：\(appErrorMessage(error))",
+                "Could not update albums: \(appErrorMessage(error))"
             )
             return false
         }
@@ -603,7 +607,7 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
             message = L("已交由系統刪除 \(ids.count) 項。", "iOS deleted \(ids.count) items.")
             return true
         } catch {
-            message = L("刪除未完成，待刪標記仍保留。", "Deletion did not complete. Pending items are preserved.") + "\n" + error.localizedDescription
+            message = L("刪除未完成，待刪標記仍保留。", "Deletion did not complete. Pending items are preserved.") + "\n\(appErrorMessage(error))"
             return false
         }
     }
@@ -611,13 +615,7 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
     private func prependReopened(_ ids: [String]) {
         guard !ids.isEmpty else { return }
 
-        let unique = ids.reduce(into: [String]()) { result, id in
-            guard !result.contains(id) else { return }
-            result.append(id)
-        }
-        let incoming = Set(unique)
-        reopenedIDs.removeAll { incoming.contains($0) }
-        reopenedIDs.insert(contentsOf: unique, at: 0)
+        reopenedIDs = ReviewQueueOrdering.prepending(ids, to: reopenedIDs)
     }
 
     private func persist() {
@@ -637,7 +635,7 @@ final class PhotoLibraryStore: NSObject, ObservableObject, PHPhotoLibraryChangeO
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try JSONEncoder().encode(saved).write(to: url, options: .atomic)
             } catch {
-                let details = error.localizedDescription
+                let details = appErrorMessage(error)
                 Task { @MainActor [weak self] in
                     self?.message = L("無法保存整理進度：", "Could not save progress: ") + details
                 }

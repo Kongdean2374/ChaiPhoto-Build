@@ -18,6 +18,86 @@ struct ReviewView: View {
             else if library.pending.isEmpty {
                 ContentUnavailableView(L("沒有待刪項目", "Nothing to delete"), systemImage: "checkmark.shield", description: Text(L("向待刪方向滑動後，項目會出現在這裡。", "Items you mark for deletion will appear here.")))
             } else {
+                GeometryReader { geometry in
+                    if dynamicTypeSize >= .xxLarge && geometry.size.height < 700 {
+                        ScrollView { reviewContent(compact: true) }
+                    } else {
+                        reviewContent(compact: false)
+                    }
+                }
+            }
+        }
+        .navigationTitle(L("待刪複查", "Review deletion"))
+        .toolbarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $preview) { AssetPreview(asset: $0.asset) }
+        .confirmationDialog(
+            L("如何還原這個項目？", "How would you like to restore this item?"),
+            isPresented: Binding(
+                get: { restoreTarget != nil },
+                set: { if !$0 { restoreTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(L("回到滑卡重新整理", "Return to swipe sorting")) {
+                if let asset = restoreTarget?.asset {
+                    library.returnToSorting(asset)
+                }
+                restoreTarget = nil
+            }
+            Button(L("直接改為保留", "Mark as kept")) {
+                if let asset = restoreTarget?.asset {
+                    library.choose(asset, as: .keep)
+                }
+                restoreTarget = nil
+            }
+            Button(L("取消", "Cancel"), role: .cancel) {
+                restoreTarget = nil
+            }
+        } message: {
+            Text(L(
+                "「回到滑卡」會撤銷這張的整理結果；「直接改為保留」則視為已看過並保留，不再出現在滑卡。",
+                "Return to swipe sorting clears this item's decision. Mark as kept treats it as already reviewed and keeps it out of the swipe queue."
+            ))
+        }
+        .alert(
+            L("確認刪除？", "Confirm deletion?"),
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button(L("取消", "Cancel"), role: .cancel) {
+                deleteSnapshot.removeAll()
+            }.accessibilityIdentifier("review-cancel-delete")
+
+            Button(
+                L("繼續刪除", "Continue deleting"),
+                role: .destructive
+            ) {
+                let snapshot = deleteSnapshot
+                deleteSnapshot.removeAll()
+
+                Task {
+                    if await library.deleteSelected(snapshot) {
+                        settings.successFeedback()
+                    }
+                }
+            }
+        } message: {
+            Text(L(
+                "即將要求 iOS 刪除 \(deleteSnapshot.count) 項。下一步仍會由 iOS 顯示系統確認；一般刪除後會進入「最近刪除」。",
+                "The app is about to ask iOS to delete \(deleteSnapshot.count) items. iOS will still show its system confirmation; deleted items normally go to Recently Deleted."
+            ))
+        }
+        .task(id: library.pending.map(\.localIdentifier)) { if settings.autoEstimate { estimator.start(library.pending) } }
+        .task(id: showDeleteConfirmation || preview != nil || restoreTarget != nil) {
+            updateManager.setPresentationBlocked(showDeleteConfirmation || preview != nil || restoreTarget != nil, reason: "review-modal")
+        }
+        .onDisappear {
+            estimator.stop()
+            if !(showDeleteConfirmation || preview != nil || restoreTarget != nil) {
+                updateManager.setPresentationBlocked(false, reason: "review-modal")
+            }
+        }
+    }
+    private func reviewContent(compact: Bool) -> some View {
                 VStack(spacing: 8) {
                     VStack(spacing: 8) {
                         HStack {
@@ -119,80 +199,9 @@ struct ReviewView: View {
                                 }.aspectRatio(1, contentMode: .fit)
                             }
                         }.padding(.horizontal, 12)
-                    }
+                    }.frame(height: compact ? 180 : nil)
                     footer
                 }
-            }
-        }
-        .navigationTitle(L("待刪複查", "Review deletion"))
-        .toolbarTitleDisplayMode(.inline)
-        .fullScreenCover(item: $preview) { AssetPreview(asset: $0.asset) }
-        .confirmationDialog(
-            L("如何還原這個項目？", "How would you like to restore this item?"),
-            isPresented: Binding(
-                get: { restoreTarget != nil },
-                set: { if !$0 { restoreTarget = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(L("回到滑卡重新整理", "Return to swipe sorting")) {
-                if let asset = restoreTarget?.asset {
-                    library.returnToSorting(asset)
-                }
-                restoreTarget = nil
-            }
-            Button(L("直接改為保留", "Mark as kept")) {
-                if let asset = restoreTarget?.asset {
-                    library.choose(asset, as: .keep)
-                }
-                restoreTarget = nil
-            }
-            Button(L("取消", "Cancel"), role: .cancel) {
-                restoreTarget = nil
-            }
-        } message: {
-            Text(L(
-                "「回到滑卡」會撤銷這張的整理結果；「直接改為保留」則視為已看過並保留，不再出現在滑卡。",
-                "Return to swipe sorting clears this item's decision. Mark as kept treats it as already reviewed and keeps it out of the swipe queue."
-            ))
-        }
-        .alert(
-            L("確認刪除？", "Confirm deletion?"),
-            isPresented: $showDeleteConfirmation
-        ) {
-            Button(L("取消", "Cancel"), role: .cancel) {
-                deleteSnapshot.removeAll()
-            }
-
-            Button(
-                L("繼續刪除", "Continue deleting"),
-                role: .destructive
-            ) {
-                let snapshot = deleteSnapshot
-                deleteSnapshot.removeAll()
-
-                Task {
-                    if await library.deleteSelected(snapshot) {
-                        settings.successFeedback()
-                    }
-                }
-            }
-        } message: {
-            Text(L(
-                "即將要求 iOS 刪除 \(deleteSnapshot.count) 項。下一步仍會由 iOS 顯示系統確認；一般刪除後會進入「最近刪除」。",
-                "The app is about to ask iOS to delete \(deleteSnapshot.count) items. iOS will still show its system confirmation; deleted items normally go to Recently Deleted."
-            ))
-        }
-        .task(id: library.pending.map(\.localIdentifier)) { if settings.autoEstimate { estimator.start(library.pending) } }
-        .task(id: showDeleteConfirmation || preview != nil || restoreTarget != nil) {
-            updateManager.setPresentationBlocked(showDeleteConfirmation || preview != nil || restoreTarget != nil, reason: "review-modal")
-        }
-        .onDisappear {
-            estimator.stop()
-            if !(showDeleteConfirmation || preview != nil || restoreTarget != nil) {
-                updateManager.setPresentationBlocked(false, reason: "review-modal")
-            }
-        }
     }
     private var footer: some View {
         let ids = library.selectedPending
@@ -287,6 +296,7 @@ struct ReviewView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
+                .accessibilityIdentifier("review-restore-selected")
                 .disabled(ids.isEmpty || library.isDeleting)
                 .accessibilityHint(L(
                     "清除所選項目的待刪標記，讓它們重新回到未審整理佇列。",
@@ -311,6 +321,7 @@ struct ReviewView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
+                .accessibilityIdentifier("review-delete-selected")
                 .disabled(ids.isEmpty || library.isDeleting)
             }
 
@@ -332,7 +343,7 @@ struct HistoryView: View {
         List {
             NavigationLink { SwipeHistoryView() } label: {
                 Label(L("整理操作（\(library.history.count)）", "Sorting actions (\(library.history.count))"), systemImage: "hand.draw")
-            }
+            }.accessibilityIdentifier("history-sorting")
             NavigationLink { DeletionHistoryView() } label: {
                 Label(L("實際刪除（\(library.deletions.count) 批）", "Deleted batches (\(library.deletions.count))"), systemImage: "trash")
             }
@@ -365,7 +376,7 @@ struct SwipeHistoryView: View {
                              restore: { undo(action) })
         }
         .navigationTitle(L("整理操作", "Sorting actions"))
-        .toolbar { Button { showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }.accessibilityLabel(L("篩選", "Filter")) }
+        .toolbar { Button { showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }.accessibilityLabel(L("篩選", "Filter")).accessibilityIdentifier("history-filter") }
         .fullScreenCover(item: $previewAction) { action in
             HistoryActionPreview(actionID: action.id, assetID: action.assetID)
         }
@@ -379,7 +390,7 @@ struct SwipeHistoryView: View {
                     if dateEnabled { DatePicker(L("開始", "From"), selection: $start, displayedComponents: .date); DatePicker(L("結束", "To"), selection: $end, in: start..., displayedComponents: .date) }
                 }.navigationTitle(L("篩選紀錄", "Filter history"))
                     .onChange(of: start) { _, value in if end < value { end = value } }
-                    .toolbar { Button(L("完成", "Done")) { showFilter = false } }
+                    .toolbar { Button(L("完成", "Done")) { showFilter = false }.accessibilityIdentifier("history-filter-done") }
             }
         }
     }
@@ -427,7 +438,7 @@ private struct HistoryActionRow: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(appDateTime(action.timestamp))
-                            .font(.subheadline).foregroundStyle(.primary).lineLimit(1)
+                            .font(.subheadline).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
                         Text(action.filename ?? L("未命名項目", "Unnamed item"))
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
@@ -530,7 +541,7 @@ struct DeletionHistoryView: View {
                     }
                 }.navigationTitle(L("篩選紀錄", "Filter history"))
                     .onChange(of: start) { _, value in if end < value { end = value } }
-                    .toolbar { Button(L("完成", "Done")) { showFilter = false } }
+                    .toolbar { Button(L("完成", "Done")) { showFilter = false }.accessibilityIdentifier("history-filter-done") }
             }
         }
     }

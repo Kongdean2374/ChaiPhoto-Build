@@ -49,7 +49,7 @@ struct ContentView: View {
             if !settings.showOnboarding, let notice = library.successNotice {
                 Label(notice, systemImage: "checkmark.circle.fill")
                     .font(.callout.weight(.medium)).padding().modifier(ChaiPanel(tint: .green))
-                    .padding().lineLimit(4).allowsHitTesting(false)
+                    .padding().fixedSize(horizontal: false, vertical: true).allowsHitTesting(false)
                     .accessibilityAddTraits(.isStaticText)
             }
         }
@@ -63,6 +63,7 @@ struct ContentView: View {
             guard !Task.isCancelled else { return }
             library.successNotice = nil
         }
+        .onChange(of: settings.language) { _, _ in library.successNotice = nil }
         .task(id: presentationBlocked) {
             updateManager.setPresentationBlocked(presentationBlocked, reason: "root")
         }
@@ -212,7 +213,7 @@ struct SortView: View {
                         .frame(width: 44, height: 44)
                         .background(ChaiPalette.accent.opacity(0.08), in: Circle())
                 }
-                .accessibilityLabel(L("篩選", "Filters"))
+                .accessibilityLabel(L("篩選", "Filters")).accessibilityIdentifier("sort-filters")
                 .disabled(!library.hasAccess)
             }
             .sheet(item: $completion) { result in
@@ -358,12 +359,12 @@ struct SortView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(filter.title)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text(filter.timeTitle)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 8)
@@ -386,7 +387,7 @@ struct SortView: View {
 
                 Spacer(minLength: 4)
 
-                Text("\(sortedCount) / \(scope.count)")
+                Text(appInteger(sortedCount) + " / " + appInteger(scope.count))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -417,7 +418,7 @@ struct SortView: View {
                     systemImage: scope.isEmpty ? "photo.on.rectangle" : "checkmark.seal",
                     description: Text(filter.title + " · " + filter.timeTitle))
                 if !scope.isEmpty || !sessionIDs.isEmpty {
-                    Button(L("查看整理小結", "View summary")) { completion = makeCompletion() }.buttonStyle(.borderedProminent)
+                    Button(L("查看整理小結", "View summary")) { completion = makeCompletion() }.buttonStyle(.borderedProminent).accessibilityIdentifier("sort-summary-button")
                 }
                 Button(L("更改篩選", "Change filters")) { showFilter = true }
             }.frame(maxHeight: .infinity)
@@ -599,7 +600,7 @@ struct SortView: View {
                 .fill(tint)
                 .frame(width: 6, height: 6)
 
-            Text("\(title) \(number)")
+            Text(title + " " + appInteger(number))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -651,7 +652,7 @@ struct SortView: View {
                 share = ShareFile(url: url)
             } catch {
                 guard !Task.isCancelled, generation == shareGeneration else { return }
-                library.message = L("無法分享：", "Could not share: ") + error.localizedDescription
+                library.message = L("無法分享：", "Could not share: ") + appErrorMessage(error)
             }
             if generation == shareGeneration { preparingShare = false; shareTask = nil }
         }
@@ -734,8 +735,7 @@ private struct PhotoCard: View {
             HStack {
                 Text(cachedSummaryLine)
                     .font(.caption)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(.secondary)
 
                 Spacer()
@@ -757,7 +757,7 @@ private struct PhotoCard: View {
                     Image(systemName: "info.circle")
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel(L("照片資訊", "Photo information"))
+                .accessibilityLabel(L("照片資訊", "Photo information")).accessibilityIdentifier("photo-information")
             }
             .padding(.leading, 8)
             .padding(.trailing, 2)
@@ -840,15 +840,7 @@ private struct PhotoCard: View {
         let dateText: String
 
         if let date = asset.creationDate {
-            let formatter = DateFormatter()
-            if UserDefaults.standard.string(forKey: "language") == "en" {
-                formatter.locale = Locale(identifier: "en_US")
-                formatter.dateFormat = "MMM d, yyyy"
-            } else {
-                formatter.locale = Locale(identifier: "zh_Hant_TW")
-                formatter.dateFormat = "yyyy年M月d日"
-            }
-            dateText = formatter.string(from: date)
+            dateText = date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(AppLocalization.locale))
         } else {
             dateText = L("日期不明", "Unknown date")
         }

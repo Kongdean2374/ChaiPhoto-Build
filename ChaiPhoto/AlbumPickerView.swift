@@ -100,7 +100,7 @@ struct AlbumPickerView: View {
                     Button(L("取消", "Cancel")) {
                         dismiss()
                     }
-                    .disabled(working)
+                    .disabled(working).accessibilityIdentifier("album-picker-cancel")
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -110,7 +110,7 @@ struct AlbumPickerView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .accessibilityLabel(L("新增相簿", "New album"))
+                    .accessibilityLabel(L("新增相簿", "New album")).accessibilityIdentifier("album-picker-new")
                     .disabled(working)
 
                     Button(L("完成", "Done")) {
@@ -125,7 +125,7 @@ struct AlbumPickerView: View {
 
                 Button(L("取消", "Cancel"), role: .cancel) {
                     newAlbumName = ""
-                }
+                }.accessibilityIdentifier("album-new-cancel")
 
                 Button(L("建立", "Create")) {
                     createAlbum()
@@ -161,7 +161,7 @@ struct AlbumPickerView: View {
 
                 Text(album.localizedTitle ?? L("未命名相簿", "Untitled Album"))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer()
             }

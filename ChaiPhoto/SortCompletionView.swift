@@ -24,17 +24,17 @@ struct SortCompletionView: View {
                     Text(L("這個範圍整理完成", "Selection complete")).font(.title2.bold())
                     Text(result.title + "\n" + result.time).multilineTextAlignment(.center)
                     VStack(spacing: 12) {
-                        LabeledContent(L("範圍內項目", "Items in selection"), value: String(result.total))
-                        LabeledContent(L("已保留", "Kept"), value: String(result.kept))
-                        LabeledContent(L("已標記待刪", "Marked for deletion"), value: String(result.marked))
-                        LabeledContent(L("已由系統刪除", "Deleted by iOS"), value: String(result.deleted))
+                        LabeledContent(L("範圍內項目", "Items in selection"), value: appInteger(result.total))
+                        LabeledContent(L("已保留", "Kept"), value: appInteger(result.kept))
+                        LabeledContent(L("已標記待刪", "Marked for deletion"), value: appInteger(result.marked))
+                        LabeledContent(L("已由系統刪除", "Deleted by iOS"), value: appInteger(result.deleted))
                     }.padding(18).modifier(ChaiPanel(tint: .green))
                     Text(L("以上為此範圍累計結果，包含先前整理的項目。待刪標記不代表已刪除，也不代表已釋放空間；請到待刪頁複查。", "These are cumulative results for this selection, including earlier decisions. Marked items are not yet deleted and no space recovery is implied. Review them in the Review tab.")).font(.caption).foregroundStyle(.secondary)
                     if let nextMonth {
                         Button(L("繼續整理 ", "Continue with ") + monthLabel(nextMonth)) { onNext(nextMonth) }.buttonStyle(.borderedProminent)
                     }
                     Button(L("其他範圍", "Choose another selection"), action: onOther).buttonStyle(.bordered)
-                    Button(L("完成", "Done")) { dismiss() }
+                    Button(L("完成", "Done")) { dismiss() }.accessibilityIdentifier("summary-done")
                 }.padding(24).frame(maxWidth: .infinity)
             }.navigationTitle(L("整理小結", "Summary")).navigationBarTitleDisplayMode(.inline)
         }

@@ -120,7 +120,7 @@ struct VideoFeedView: View {
             ) { _ in }
         }
         .confirmationDialog(
-            L("目前位於「\(currentAlbumName ?? L("此相簿", "this album"))」", "Currently in “\(currentAlbumName ?? "this album")”"),
+            L("目前位於「\(currentAlbumName ?? L("此相簿", "this album"))」", "Currently in “\(currentAlbumName ?? L("此相簿", "this album"))”"),
             isPresented: $showAlbumContextDialog,
             titleVisibility: .visible
         ) {
@@ -319,7 +319,7 @@ struct VideoFeedView: View {
                 share = ShareFile(url: url)
             } catch {
                 guard !Task.isCancelled, generation == shareGeneration else { return }
-                library.message = L("無法分享：", "Could not share: ") + error.localizedDescription
+                library.message = L("無法分享：", "Could not share: ") + appErrorMessage(error)
             }
             if generation == shareGeneration { preparing = false; shareTask = nil }
         }

@@ -4,6 +4,7 @@ Only PNG/JPEG image bytes from the isolated synthetic-media simulator are retain
 Test failures are reported in the job log; raw UI hierarchies and recordings are not uploaded.
 """
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -33,6 +34,25 @@ def collect(bundle, destination):
         export_error = error
         print("XCTest export incomplete; retaining any available screenshots:", type(error).__name__)
     destination.mkdir(parents=True, exist_ok=True)
+    # Preserve only a sanitized screenshot name, never raw XCTest metadata.
+    names = {}
+    manifest = raw / "manifest.json"
+    if manifest.is_file():
+        try:
+            def visit(value):
+                if isinstance(value, list):
+                    for child in value: visit(child)
+                elif isinstance(value, dict):
+                    filename = value.get("exportedFileName")
+                    label = value.get("suggestedHumanReadableName", value.get("name", ""))
+                    if isinstance(filename, str) and isinstance(label, str):
+                        match = re.search(r"visual-[A-Za-z0-9_-]+", label)
+                        if match: names[Path(filename).name] = match.group(0)
+                    for child in value.values():
+                        if isinstance(child, (list, dict)): visit(child)
+            visit(json.loads(manifest.read_text()))
+        except (OSError, ValueError):
+            print("Screenshot name map unavailable; keeping original image identifiers")
     count = 0
     for source in sorted(raw.rglob("*")):
         if not source.is_file():
@@ -42,6 +62,8 @@ def collect(bundle, destination):
         extension = ".png" if signature == b"\x89PNG\r\n\x1a\n" else ".jpg" if signature.startswith(b"\xff\xd8\xff") else None
         if extension:
             name = source.relative_to(raw).with_suffix("").as_posix().replace("/", "__")
+            if source.name in names:
+                name = names[source.name] + "__" + name
             target = destination / (name + extension)
             shutil.copyfile(source, target)
             print("Retained simulator screenshot:", target.name)
@@ -57,5 +79,8 @@ def collect(bundle, destination):
 if __name__ == "__main__":
     bundle, destination = map(Path, sys.argv[1:3])
     count = collect(bundle, destination)
-    if "--require-complete" in sys.argv[3:] and count < 8:
-        raise SystemExit("Visual review requires all eight real app screenshots per flavor")
+    if "--require-complete" in sys.argv[3:]:
+        plan = json.loads((Path(__file__).resolve().parents[1] / "build/visual-pages.json").read_text())
+        expected = plan["legacy_screenshots_per_flavor"] + len(plan["languages"]) * len(plan["profiles"]) * len(plan["pages"])
+        if count < expected:
+            raise SystemExit(f"Six-language visual review requires {expected} actual screenshots per flavor; retained {count}")

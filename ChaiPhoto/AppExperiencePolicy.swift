@@ -105,7 +105,7 @@ struct AppReleaseInfo: Codable, Equatable {
 
     func isNewer(than version: String, build: Int, channel: ReleaseChannel) -> Bool {
         guard let latest = ReleaseVersion(latestVersion), let current = ReleaseVersion(version),
-              channel == .store || (latestBuild > 0 && latestBuild.isMultiple(of: 2)) else { return false }
+              channel == .store || latestBuild > 0 else { return false }
         return latest > current || (channel == .beta && latest == current && latestBuild > build)
     }
 

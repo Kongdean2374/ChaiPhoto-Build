@@ -15,7 +15,7 @@ jobs:
   validate:
     if: github.repository == 'Kongdean2374/ChaiPhoto-Build' && github.event.repository.private == false && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
     steps:
@@ -41,6 +41,11 @@ jobs:
             swiftc -swift-version 5 -D "$flavor" ChaiPhoto/AppExperiencePolicy.swift ChaiPhoto/ReviewQueueOrdering.swift Validation/ExperiencePolicyRegression.swift -o "$RUNNER_TEMP/policy-tests"
             "$RUNNER_TEMP/policy-tests"
           done
+          swiftc -swift-version 5 ChaiPhoto/AppLocalization.swift ChaiPhoto/ReviewQueueOrdering.swift Validation/LanguagePolicyRegression.swift -o "$RUNNER_TEMP/language-policy-tests"
+          "$RUNNER_TEMP/language-policy-tests"
+          for localization in ChaiPhoto/Localization/*.lproj; do
+            plutil -lint "$localization/Localizable.strings" "$localization/Localizable.stringsdict" "$localization/InfoPlist.strings"
+          done
       - name: Compile both unsigned iPhoneOS flavors
         shell: bash
         run: |
@@ -61,13 +66,15 @@ jobs:
           xcodegen generate --spec project-tests.yml
           RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["name"].startswith("iOS")))')
           python3 scripts/make_visual_fixtures.py "$RUNNER_TEMP/visual-fixtures"
+          swift scripts/make_visual_video.swift "$RUNNER_TEMP/visual-fixtures/visual-video.mov"
           status=0
+          DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; print(next(d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == "iPhone SE (3rd generation)"))')
           for config in Release-TestFlight Release-AppStore; do
             # Each flavor gets its own Photos permission and onboarding state.
-            DEVICE_ID=$(xcrun simctl create "ChaiPhoto Visual Review $config" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro "$RUNTIME_ID")
+            DEVICE_ID=$(xcrun simctl create "ChaiPhoto Visual Review $config" "$DEVICE_TYPE" "$RUNTIME_ID")
             xcrun simctl boot "$DEVICE_ID"
             xcrun simctl bootstatus "$DEVICE_ID" -b
-            xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP"/visual-fixtures/*.png
+            xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP"/visual-fixtures/*.png "$RUNNER_TEMP"/visual-fixtures/*.mov
             if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
               -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
               -derivedDataPath "$RUNNER_TEMP/simulator-$config" \

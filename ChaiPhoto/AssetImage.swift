@@ -108,6 +108,8 @@ struct AssetImage: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode == .aspectFill ? .fill : .fit)
+                    .accessibilityLabel(L("預覽照片", "Preview photo"))
+                    .accessibilityIdentifier("rendered-media-image")
             } else {
                 Color.secondary.opacity(0.15)
 
@@ -134,7 +136,7 @@ struct AssetImage: View {
                             .controlSize(.mini)
                         Image(systemName: "icloud.and.arrow.down")
                         if loader.progress > 0 {
-                            Text("\(Int(loader.progress * 100))%")
+                            Text(loader.progress.formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.locale)))
                         }
                     }
                     .font(.caption2.monospacedDigit())
@@ -220,6 +222,7 @@ struct AssetPreview: View {
                 Button { showInfo = true } label: { Image(systemName: "info.circle").frame(width: 44, height: 44) }
                 Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.title2).frame(width: 44, height: 44) }
                     .accessibilityLabel(L("關閉", "Close"))
+                    .accessibilityIdentifier("media-preview-close")
             }.padding(.horizontal, 16)
             if asset.mediaType == .video {
                 LocalVideoView(asset: asset, active: true, autoplay: settings.autoplay, muted: settings.muted)
@@ -792,6 +795,8 @@ struct LocalVideoView: View {
                 Image(uiImage: poster)
                     .resizable()
                     .scaledToFit()
+                    .accessibilityLabel(L("影片預覽", "Video preview"))
+                    .accessibilityIdentifier("video-poster")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black)
                     .allowsHitTesting(false)
@@ -935,6 +940,8 @@ struct LocalVideoView: View {
             if !loader.isPlaying {
                 Image(systemName: "play.fill")
                     .font(.system(size: 42, weight: .semibold))
+                    .accessibilityLabel(L("已暫停", "Paused"))
+                    .accessibilityIdentifier("video-ready")
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(22)
                     .background(.black.opacity(0.28), in: Circle())
@@ -1028,7 +1035,7 @@ struct LocalVideoView: View {
                 .frame(maxWidth: 220)
 
             if loader.progress < 0.995 {
-                Text("\(Int(loader.progress * 100))%")
+                Text(loader.progress.formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.locale)))
                     .font(.caption.monospacedDigit())
             }
         }

@@ -140,7 +140,7 @@ struct MediaFilter: Equatable {
     var timeTitle: String {
         if !dateEnabled { return L("全部時間", "All dates") }
         if timeMode == "month" { return monthLabel(start) }
-        let style = Date.FormatStyle(date: .numeric, time: .omitted).locale(Locale(identifier: UserDefaults.standard.string(forKey: "language") == "en" ? "en_US" : "zh_TW"))
+        let style = Date.FormatStyle(date: .numeric, time: .omitted).locale(AppLocalization.locale)
         return L("指定日期：", "Date range: ") + start.formatted(style) + " – " + end.formatted(style)
     }
     mutating func setMonth(_ date: Date) {
@@ -244,7 +244,7 @@ struct FilterView: View {
             }
             .navigationTitle(L("整理篩選", "Sort filters"))
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L("取消", "Cancel")) { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(L("取消", "Cancel")) { dismiss() }.accessibilityIdentifier("filter-cancel") }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("套用日期", "Apply Date")) {
                         var next = filter
@@ -317,10 +317,10 @@ struct FilterView: View {
                 Label(title, systemImage: symbol)
                 Spacer()
                 if draft.source == source {
-                    Text(draft.title).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(draft.title).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
-        }
+        }.accessibilityIdentifier("filter-source-" + source)
     }
 
 }
@@ -357,7 +357,7 @@ private struct FilterSubcategoryView: View {
                         onSelect(draft)
                     } label: {
                         row(source == "photos" ? draft.kindTitle(kind) : draft.videoKindTitle(kind), selected: draft.source == source && draft.kind == kind)
-                    }
+                    }.accessibilityIdentifier("filter-kind-" + kind)
                 }
             }
         }
@@ -375,7 +375,7 @@ private struct FilterSubcategoryView: View {
 
 
 func monthLabel(_ date: Date) -> String {
-    let locale = Locale(identifier: UserDefaults.standard.string(forKey: "language") == "en" ? "en_US" : "zh_TW")
+    let locale = AppLocalization.locale
     return date.formatted(Date.FormatStyle().year().month(.wide).locale(locale))
 }
 

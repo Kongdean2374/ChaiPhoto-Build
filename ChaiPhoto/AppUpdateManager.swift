@@ -114,7 +114,7 @@ final class AppUpdateManager: ObservableObject {
 #if CHAIPHOTO_TESTFLIGHT
             let data = try await fetch(Self.endpoint)
             release = try JSONDecoder().decode(AppReleaseInfo.self, from: data)
-            guard ReleaseVersion(release.latestVersion) != nil, release.latestBuild > 0, release.latestBuild.isMultiple(of: 2) else {
+            guard ReleaseVersion(release.latestVersion) != nil, release.latestBuild > 0 else {
                 throw URLError(.cannotParseResponse)
             }
 #else

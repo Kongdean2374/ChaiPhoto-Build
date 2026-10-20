@@ -22,6 +22,7 @@ targets:
       - path: ChaiPhoto/ContentView.swift
       - path: ChaiPhoto/AppVisualStyle.swift
       - path: ChaiPhoto/AppSettings.swift
+      - path: ChaiPhoto/AppLocalization.swift
       - path: ChaiPhoto/AppExperiencePolicy.swift
       - path: ChaiPhoto/AppUpdateManager.swift
       - path: ChaiPhoto/PhotoLibraryStore.swift
@@ -39,6 +40,8 @@ targets:
       - path: ChaiPhoto/SortCompletionView.swift
       - path: ChaiPhoto/InteractionTutorialView.swift
       - path: ChaiPhoto/WelcomeGuide.swift
+      - path: ChaiPhoto/Localization
+        buildPhase: resources
       - path: ChaiPhoto/PrivacyInfo.xcprivacy
         buildPhase: resources
       - path: ChaiPhoto/Assets.xcassets
@@ -47,7 +50,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tw.chai2374.ChaiPhoto
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "1.2.7"
+        MARKETING_VERSION: "1.2.8"
         CURRENT_PROJECT_VERSION: "31"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: ChaiPhoto/Info.plist

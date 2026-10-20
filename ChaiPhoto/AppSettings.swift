@@ -5,10 +5,6 @@ import Darwin
 import Photos
 import Network
 
-func L(_ zh: String, _ en: String) -> String {
-    UserDefaults.standard.string(forKey: "language") == "en" ? en : zh
-}
-
 @MainActor
 final class AppSettings: ObservableObject {
     private let defaults: UserDefaults
@@ -127,7 +123,20 @@ final class AppSettings: ObservableObject {
     }
 
     @Published var textSize: String { didSet { defaults.set(textSize, forKey: "textSize") } }
-    @Published var language: String { didSet { defaults.set(language, forKey: "language") } }
+    @Published private(set) var language: String
+    @Published private(set) var needsLanguageConfirmation: Bool
+    func previewInitialLanguage(_ value: String) {
+        guard needsLanguageConfirmation, let concrete = AppLanguage(rawValue: value) else { return }
+        AppLocalization.use(concrete)
+        language = concrete.rawValue
+    }
+    func selectLanguage(_ value: String) {
+        guard let concrete = AppLanguage(rawValue: value) else { return }
+        LanguagePreference.confirm(concrete, defaults: defaults)
+        AppLocalization.use(concrete)
+        language = concrete.rawValue
+        needsLanguageConfirmation = false
+    }
     @Published var appearance: String { didSet { defaults.set(appearance, forKey: "appearance") } }
     @Published var deleteOnRight: Bool { didSet { defaults.set(deleteOnRight, forKey: "deleteOnRight") } }
     @Published var autoplay: Bool { didSet { defaults.set(autoplay, forKey: "autoplay") } }
@@ -139,8 +148,12 @@ final class AppSettings: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let d = defaults
+        let needsGuide = OnboardingPolicy.needsGuide(d)
+        let initialLanguage = LanguagePreference.initial(defaults: d, preferences: Locale.preferredLanguages, existingUser: !needsGuide)
+        language = initialLanguage.language.rawValue
+        needsLanguageConfirmation = initialLanguage.needsConfirmation
+        AppLocalization.use(initialLanguage.language)
         d.register(defaults: [
-            "language":"zh-Hant",
             "appearance":"system",
             "autoplay":true,
             "muted":true,
@@ -158,14 +171,13 @@ final class AppSettings: ObservableObject {
         preloadPreset = d.string(forKey: "preload.mode.v3").flatMap(PreloadPreset.init(rawValue:)) ??
             PreloadPreset.migrated(fullSpeed: fullSpeedPreload, photos: photoPreloadCount, videos: videoPreloadCount)
         textSize = d.string(forKey: "textSize") ?? "system"
-        language = d.string(forKey: "language") ?? "zh-Hant"
         appearance = d.string(forKey: "appearance") ?? "system"
         deleteOnRight = d.bool(forKey: "deleteOnRight")
         autoplay = d.bool(forKey: "autoplay"); muted = d.bool(forKey: "muted")
         haptics = d.bool(forKey: "haptics"); autoEstimate = d.bool(forKey: "autoEstimate")
         advanceAfterAlbumAction = d.bool(forKey: "advanceAfterAlbumAction")
         favorites = Set(d.stringArray(forKey: "videoFavorites") ?? [])
-        showOnboarding = OnboardingPolicy.needsGuide(d)
+        showOnboarding = needsGuide
     }
     var colorScheme: ColorScheme? { appearance == "dark" ? .dark : appearance == "light" ? .light : nil }
 
@@ -273,7 +285,7 @@ struct SettingsView: View {
                     Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(.vertical, 8)
-        }
+        }.accessibilityIdentifier("settings-" + item.rawValue)
     }
 
     private var versionLabel: String {
@@ -395,7 +407,7 @@ struct SettingsView: View {
                                 L("複製系統資訊", "Copy system information"),
                                 systemImage: "doc.on.doc"
                             )
-                        }
+                        }.accessibilityIdentifier("diagnostics-copy")
 
                         Text(L(
                             "系統資訊只會在你確認後複製到剪貼簿，不會自動傳送到回報網站。",
@@ -474,7 +486,7 @@ struct SettingsView: View {
                                 L("複製系統資訊", "Copy system information"),
                                 systemImage: "doc.on.doc"
                             )
-                        }
+                        }.accessibilityIdentifier("diagnostics-copy")
 
                         Text(L(
                             "系統資訊只會在你確認後複製到剪貼簿，不會自動傳送到回報網站。",
@@ -487,8 +499,8 @@ struct SettingsView: View {
                 case .information:
                     Section(L("紀錄與說明", "History & information")) {
                         Button(L("重新檢視首次導覽", "Revisit getting started")) { settings.reviewingOnboarding = true }
-                        NavigationLink(L("完整手勢教學", "Gesture guide")) { GestureReferenceView() }
-                        NavigationLink(L("操作紀錄", "Activity history")) { HistoryView() }
+                        NavigationLink(L("完整手勢教學", "Gesture guide")) { GestureReferenceView() }.accessibilityIdentifier("information-gestures")
+                        NavigationLink(L("操作紀錄", "Activity history")) { HistoryView() }.accessibilityIdentifier("information-history")
                         Link(destination: AppLinks.privacy) {
                             HStack {
                                 Text(L("隱私政策", "Privacy policy"))
@@ -569,7 +581,7 @@ struct SettingsView: View {
             L("複製系統資訊？", "Copy system information?"),
             isPresented: $showDiagnosticsConfirmation
         ) {
-            Button(L("取消", "Cancel"), role: .cancel) {}
+            Button(L("取消", "Cancel"), role: .cancel) {}.accessibilityIdentifier("diagnostics-cancel")
 
             Button(L("確定並複製", "Copy")) {
                 UIPasteboard.general.string = diagnosticsText
@@ -591,13 +603,13 @@ struct SettingsView: View {
 // String formatting must explicitly use the app language; SwiftUI locale cannot
 // localize a String that Date.formatted() has already produced.
 func appDateTime(_ date: Date) -> String {
-    let locale = Locale(identifier: UserDefaults.standard.string(forKey: "language") == "en" ? "en_US" : "zh_TW")
+    let locale = AppLocalization.locale
     return date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
 }
 
 
 // Each destination owns the same settings bindings; moving rows changes no defaults.
-enum SettingsCategory {
+enum SettingsCategory: String {
     case appearance, sorting, media, support, information
     var title: String {
         switch self {
@@ -654,23 +666,28 @@ struct AppearancePreferenceFields: View {
                 Text(L("加大", "Large")).tag("large")
                 Text(L("特大", "Extra large")).tag("extra")
             }
-            Picker(L("語言", "Language"), selection: $settings.language) {
-                Text("繁體中文").tag("zh-Hant")
-                Text("English").tag("en")
-            }
+            LanguagePicker()
         }.pickerStyle(.menu)
     }
 }
 
 struct SortingPreferenceFields: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private var direction: some View {
+        Picker(L("刪除方向", "Delete direction"), selection: $settings.deleteOnRight) {
+            Text(L("左滑待刪", "Delete left")).tag(false)
+            Text(L("右滑待刪", "Delete right")).tag(true)
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L("照片刪除方向", "Photo delete direction"))
-            Picker(L("刪除方向", "Delete direction"), selection: $settings.deleteOnRight) {
-                Text(L("左滑待刪", "Delete left")).tag(false)
-                Text(L("右滑待刪", "Delete right")).tag(true)
-            }.pickerStyle(.segmented)
+            if dynamicTypeSize >= .xxLarge || ["es", "fr"].contains(settings.language) {
+                direction.pickerStyle(.inline)
+            } else {
+                direction.pickerStyle(.segmented)
+            }
             Toggle(L("觸覺回饋", "Haptic feedback"), isOn: $settings.haptics)
             Toggle(L("自動估算待刪容量", "Estimate review size automatically"), isOn: $settings.autoEstimate)
             Toggle(L("加入相簿後自動下一張", "Advance after adding to albums"), isOn: $settings.advanceAfterAlbumAction)
@@ -729,5 +746,15 @@ struct CloudPreloadSettingsView: View {
             .font(.caption).foregroundStyle(.orange)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier(photo ? "photo-download-note" : "video-download-note")
+    }
+}
+
+struct LanguagePicker: View {
+    @EnvironmentObject private var settings: AppSettings
+    var body: some View {
+        Picker(L("語言", "Language"), selection: Binding(get: { settings.language }, set: { settings.selectLanguage($0) })) {
+            ForEach(AppLanguage.allCases) { language in Text(language.name).tag(language.rawValue) }
+        }.accessibilityIdentifier("app-language-picker")
+            .accessibilityValue(AppLanguage(rawValue: settings.language)?.name ?? "English")
     }
 }

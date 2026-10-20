@@ -25,14 +25,14 @@ and provisioning. Release assets and this source are publicly downloadable.
 
 ## Versions
 
-Marketing version remains 1.2.7 by explicit owner instruction. Both Apple delivery
-channels now share one increasing build sequence; parity has no channel meaning.
-Use an unused positive integer from 1 to 9999, greater than Apple's highest build
-across both channels. The current target is 67 only if still unused and above the
-live Apple maximum; Build 66 is already uploaded and must not be reused.
-Source and validation commits do not reserve build numbers. Never rerun a previous
-upload; dispatch the exact validated main SHA with the newly confirmed build.
-The repository build setting is only a placeholder.
+Marketing version for this development snapshot is **1.2.8**. No new TestFlight or
+App Store upload, submission, or release is authorized for this iteration. The owner
+confirms the previous 1.2.7 (68) App Store release at public commit
+76ad27e2ffb1a2f283b58f05475b4d615ec7b8a3. Do not reuse Build 68.
+Both Apple channels share one integer sequence. A future authorized delivery must
+first read Apple's live highest used build and reserve exactly maximum + 1; this
+source change does not reserve 69 or any other number. The project build setting
+31 is only an unsigned validation placeholder. Dispatch an exact reviewed main SHA.
 
 Existing live Apple preflight still runs before certificate import and compilation.
 It rejects a used or lower build, closed marketing-version trains, unknown states,
@@ -194,3 +194,42 @@ Only exported PNG attachments are retained for three days; no original media,
 signing data or full result/log bundles are published. This is a validation-only
 artifact, not an App Store screenshot submission. Compilation/test success is
 separate from human visual inspection and physical-device performance acceptance.
+
+
+## 1.2.8: concrete saved languages and bounded UI refinements
+
+Exactly six in-app languages: Traditional Chinese, Simplified Chinese, English,
+Japanese, Spanish, and French. Genuine first setup suggests a supported concrete
+language from OS/per-app preferences and falls back to English. Confirmation saves
+it. There is no follow-system language option; later system changes never overwrite
+a confirmed choice. Existing choices and completed onboarding are migrated without
+resetting sorting decisions, pending items, history, filters, cursor, or albums.
+
+Native `.lproj` resources contain 375 App messages, including 13 plural entries,
+Photos purpose strings, and bundle display names. Explicit saved-language bundles
+and locales format App text, dates, numbers, sizes and progress. iOS-owned permission
+buttons, system dialogs and sharing UI remain controlled by iOS preferences;
+choosing an in-app language does not directly change those system screens.
+
+Long copy wraps instead of shrinking. Large-text controls may stack, and short
+large-text Review screens scroll around a bounded thumbnail viewport. Existing
+visual style, cloud consent, original media, gestures and playback policies remain.
+Priority queue deduplication is linear and stable; the old update checker also no
+longer rejects odd positive beta builds in the shared sequence.
+
+`build/visual-pages.json` is an acceptance PLAN, not rendering evidence. Mac CI
+must compile both unsigned iPhoneOS flavors, run XCTest and lifecycle UI tests,
+and export real screenshots from an actual 375-point iPhone SE simulator with
+synthetic Photos assets only. Six languages x light/standard and dark/extra-large
+profiles x 39 named pages, plus eight legacy pages, require 476 screenshots per
+flavor (952 total). The local MOV is a small synthetic control-test fixture, not a
+frame-rate benchmark. No system media deletions occur in UI tests. Failures retain
+screenshots and full XCTest diagnostics; artifacts contain only sanitized PNG/JPEG
+screenshots and expire after three days.
+
+Source/resource checks alone do not establish compilation, runtime behavior or
+visual acceptance. After CI succeeds, download and inspect the actual images.
+Real-device 120Hz, energy and large-library memory, cloud-only loading/failure,
+limited/revoked permissions and every system-dialog language combination require
+separate verification. No similar-media analysis, new product feature, App Store
+listing translation, price, region or website change is included.

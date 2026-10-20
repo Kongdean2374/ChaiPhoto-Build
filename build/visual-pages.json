@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "legacy_screenshots_per_flavor": 8,
+  "languages": [
+    "zh-Hant",
+    "zh-Hans",
+    "en",
+    "ja",
+    "es",
+    "fr"
+  ],
+  "profiles": [
+    {
+      "appearance": "light",
+      "textSize": "standard"
+    },
+    {
+      "appearance": "dark",
+      "textSize": "extra"
+    }
+  ],
+  "pages": [
+    "01-language",
+    "02-guide-access",
+    "03-guide-general",
+    "04-guide-general-bottom",
+    "05-guide-safety",
+    "06-sort",
+    "07-media-information",
+    "08-media-information-bottom",
+    "09-filters",
+    "10-photo-types",
+    "11-video-types",
+    "12-albums",
+    "13-review",
+    "14-review-bottom",
+    "15-deletion-safety",
+    "16-settings",
+    "17-appearance",
+    "18-controls",
+    "19-media",
+    "20-media-bottom",
+    "21-support",
+    "22-diagnostics-safety",
+    "23-information",
+    "24-gestures",
+    "25-gestures-bottom",
+    "26-history",
+    "27-history-filter",
+    "28-review-empty",
+    "29-relaunch-language-locked",
+    "30-album-picker",
+    "31-new-album",
+    "32-summary",
+    "33-sort-complete",
+    "34-sort-empty",
+    "35-photo-preview",
+    "36-video-entry",
+    "37-video",
+    "38-video-foreground-paused",
+    "39-language-bottom"
+  ],
+  "device": "iPhone SE (3rd generation)",
+  "maximum_width_points": 375,
+  "notes": "Synthetic Photos media only. This is an acceptance plan, not evidence of successful rendering. Cloud-only/download-failure states and real-device power/FPS require separate verification."
+}

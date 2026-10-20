@@ -16,6 +16,7 @@ targets:
     platform: iOS
     sources:
       - path: TestsUI/LaunchFlowTests.swift
+      - path: TestsUI/LocalizationFlowTests.swift
     dependencies:
       - target: ChaiPhoto
     settings:
@@ -27,6 +28,7 @@ targets:
     platform: iOS
     sources:
       - path: Tests/StateRegressionTests.swift
+      - path: Tests/LocalizationRegressionTests.swift
       - path: Tests/ExperienceRegressionTests.swift
     dependencies:
       - target: ChaiPhoto

@@ -91,7 +91,7 @@ struct ExperiencePolicyRegression {
         expect(!AppReleaseInfo(latestVersion: "1.2.5", latestBuild: 9999).isNewer(than: "1.2.6", build: 58, channel: .beta), "older marketing version not newer")
         expect(AppReleaseInfo(latestVersion: "1.2.7", latestBuild: 0).isNewer(than: "1.2.6", build: 58, channel: .store), "store compares marketing version")
         expect(!AppReleaseInfo(latestVersion: "1.2.7", latestBuild: 0).isNewer(than: "1.2.6", build: 58, channel: .beta), "invalid beta build rejected")
-        expect(!AppReleaseInfo(latestVersion: "1.2.7", latestBuild: 61).isNewer(than: "1.2.6", build: 58, channel: .beta), "store odd build cannot enter beta channel")
+        expect(AppReleaseInfo(latestVersion: "1.2.7", latestBuild: 61).isNewer(than: "1.2.6", build: 58, channel: .beta), "shared build sequence also accepts odd beta builds")
         expect(beta.identity(channel: .store) != beta.identity(channel: .beta), "channel suppression isolation")
         let bundle = "tw.chai2374.ChaiPhoto"
         for (id, link, allowed) in [(bundle, "https://apps.apple.com/tw/app/id123", true),

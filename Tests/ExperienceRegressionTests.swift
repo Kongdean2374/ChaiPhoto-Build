@@ -278,3 +278,4 @@ final class ExperienceRegressionTests: XCTestCase {
         XCTAssertFalse(manager.showPrompt, "Automatic presentation must not repeat in this process")
     }
 }
+

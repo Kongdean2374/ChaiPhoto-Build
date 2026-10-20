@@ -27,7 +27,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>讀取照片與影片供你整理，可依你的操作調整喜好項目、相簿，只有你在待刪頁確認時才會要求刪除。</string>
+	<string>Read photos and videos for you to organize. Album and favorite changes follow your actions. Deletion is requested only when you confirm in Review.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

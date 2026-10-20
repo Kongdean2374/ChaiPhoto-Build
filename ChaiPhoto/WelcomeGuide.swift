@@ -18,23 +18,26 @@ struct WelcomeGuide: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text(L("步驟 \(page + 1)／3", "Step \(page + 1) of 3"))
+                    Text(settings.needsLanguageConfirmation ? L("語言", "Language") : L("步驟 \(page + 1)／3", "Step \(page + 1) of 3"))
                         .font(.caption).foregroundStyle(.secondary)
-                    pageContent
+                    if settings.needsLanguageConfirmation { languageConfirmation }
+                    else { pageContent }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
             }
             .safeAreaInset(edge: .bottom) {
                 HStack {
-                    if page > 0 { Button(L("上一步", "Back")) { page -= 1 } }
+                    if page > 0 && !settings.needsLanguageConfirmation { Button(L("上一步", "Back")) { page -= 1 } }
                     Spacer()
-                    Button(page == 2 ? L("完成", "Finish") : L("下一步", "Next")) {
-                        if page < 2 { page += 1 }
+                    Button(settings.needsLanguageConfirmation ? L("確認語言", "Confirm language") : page == 2 ? L("完成", "Finish") : L("下一步", "Next")) {
+                        if settings.needsLanguageConfirmation { settings.selectLanguage(settings.language) }
+                        else if page < 2 { page += 1 }
                         else {
                             if !reviewing { OnboardingPolicy.complete(.standard) }
                             finished()
                             dismiss()
                         }
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+                        .accessibilityIdentifier(settings.needsLanguageConfirmation ? "confirm-app-language" : "guide-next")
                 }.padding().background(.regularMaterial)
             }
             .navigationTitle(L("快速開始", "Quick start"))
@@ -43,6 +46,19 @@ struct WelcomeGuide: View {
             .onChange(of: page) { _, value in
                 if !reviewing { UserDefaults.standard.set(value, forKey: OnboardingPolicy.pageKey) }
             }
+        }
+    }
+
+    private var languageConfirmation: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text(L("選擇 App 語言", "Choose app language")).font(.title.bold())
+            Text(L("這是依裝置偏好提供的建議。確認後，App 語言只會在你手動更改時更新。", "Suggested from your device preferences. Once confirmed, the app language changes only when you change it in Settings."))
+                .fixedSize(horizontal: false, vertical: true)
+            Picker(L("語言", "Language"), selection: Binding(get: { settings.language }, set: { settings.previewInitialLanguage($0) })) {
+                ForEach(AppLanguage.allCases) { language in Text(language.name).tag(language.rawValue) }
+            }.pickerStyle(.inline).accessibilityIdentifier("initial-app-language")
+            Text(L("iOS 的權限與系統介面語言由系統管理，可能與 App 內選擇不同。", "iOS controls the language of permission dialogs and other system screens. It may differ from your in-app choice."))
+                .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -107,16 +123,24 @@ struct PhotoAccessStatusView: View {
 
 struct PreloadPresetPicker: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private var choices: some View {
+        Picker(L("預載速度", "Preload speed"), selection: Binding(
+            get: { settings.preloadPreset }, set: { settings.applyPreloadPreset($0) }
+        )) {
+            Text(L("關閉", "Off")).tag(PreloadPreset.off)
+            Text(L("低速", "Low")).tag(PreloadPreset.economy)
+            Text(L("平衡", "Balanced")).tag(PreloadPreset.balanced)
+            Text(L("積極", "Aggressive")).tag(PreloadPreset.aggressive)
+        }.accessibilityIdentifier("preload-modes")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker(L("預載速度", "Preload speed"), selection: Binding(
-                get: { settings.preloadPreset }, set: { settings.applyPreloadPreset($0) }
-            )) {
-                Text(L("關閉", "Off")).tag(PreloadPreset.off)
-                Text(L("低速", "Low")).tag(PreloadPreset.economy)
-                Text(L("平衡", "Balanced")).tag(PreloadPreset.balanced)
-                Text(L("積極", "Aggressive")).tag(PreloadPreset.aggressive)
-            }.pickerStyle(.segmented).accessibilityIdentifier("preload-modes")
+            if dynamicTypeSize >= .xxLarge || ["es", "fr"].contains(settings.language) {
+                choices.pickerStyle(.inline)
+            } else {
+                choices.pickerStyle(.segmented)
+            }
             Label(description, systemImage: settings.preloadPreset == .off || settings.preloadPreset == .aggressive ? "exclamationmark.triangle" : "info.circle")
                 .font(.caption)
                 .foregroundStyle(settings.preloadPreset == .off || settings.preloadPreset == .aggressive ? Color.orange : Color.secondary)

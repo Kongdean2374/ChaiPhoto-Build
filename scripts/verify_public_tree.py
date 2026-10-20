@@ -58,12 +58,14 @@ def verify(project=False):
     for path, digest in manifest["files"].items():
         if hashlib.sha256(Path(path).read_bytes()).hexdigest() != digest:
             fail("Approved source content mismatch: " + path)
+    from check_localizations import verify as verify_localizations
+    verify_localizations(ROOT)
     config = Path("project.yml").read_text()
     swift = {p for p in manifest["files"] if p.endswith(".swift")}
     source_paths = re.findall(r"^\s+- path: ([^\n]+)$", config, re.M)
-    if len(swift) != 21 or set(source_paths) != swift | {
-        "ChaiPhoto/PrivacyInfo.xcprivacy", "ChaiPhoto/Assets.xcassets"
-    } or len(source_paths) != len(swift) + 2:
+    if len(swift) != 22 or set(source_paths) != swift | {
+        "ChaiPhoto/PrivacyInfo.xcprivacy", "ChaiPhoto/Assets.xcassets", "ChaiPhoto/Localization"
+    } or len(source_paths) != len(swift) + 3:
         fail("Explicit project source/resource membership mismatch")
     if re.search(r"preBuildScripts|postBuildScripts|preGenCommand|postGenCommand|^\s*packages:", config, re.M):
         fail("Unapproved project execution hook")
@@ -94,8 +96,8 @@ def verify(project=False):
                     out.append(Path(ref.get("path", ref.get("name", ""))).name)
         if sorted(source_names) != sorted(Path(p).name for p in swift):
             fail("Generated Xcode source phase mismatch")
-        if sorted(resource_names) != ["Assets.xcassets", "PrivacyInfo.xcprivacy"]:
-            fail("Generated Xcode resource phase mismatch")
+        if sorted(resource_names) != ["Assets.xcassets", "InfoPlist.strings", "Localizable.strings", "Localizable.stringsdict", "PrivacyInfo.xcprivacy"]:
+            fail("Generated Xcode resource phase mismatch: " + repr(sorted(resource_names)))
     print(f"Public snapshot verified: {len(expected)} files, {len(swift)} Swift sources")
 
 if __name__ == "__main__":

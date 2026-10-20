@@ -116,6 +116,28 @@ class AdditionalVisualEvidenceTests(unittest.TestCase):
                 COLLECTOR.collect(self.bundle, self.output)
         self.assert_images_only()
 
+    def test_named_screenshots_do_not_copy_raw_manifest_or_hierarchy(self):
+        (self.raw / "manifest.json").write_text(json.dumps([{"attachments": [{
+            "exportedFileName": "extensionless-image",
+            "suggestedHumanReadableName": "visual-l128-fr-dark-extra-14-review-bottom"
+        }], "private-hierarchy": "must not be copied"}]))
+        with patch.object(COLLECTOR.subprocess, "check_output", return_value='{"result":"Passed"}'), \
+             patch.object(COLLECTOR.subprocess, "run"):
+            self.assertEqual(COLLECTOR.collect(self.bundle, self.output), 2)
+        self.assertFalse((self.output / "manifest.json").exists())
+        self.assertTrue((self.output / "visual-l128-fr-dark-extra-14-review-bottom__extensionless-image.png").exists())
+
+    def test_plan_covers_six_languages_two_profiles_and_every_named_matrix_page(self):
+        import re
+        plan = json.loads((ROOT / "build/visual-pages.json").read_text())
+        self.assertEqual(set(plan["languages"]), {"zh-Hant", "zh-Hans", "en", "ja", "es", "fr"})
+        self.assertEqual(plan["maximum_width_points"], 375)
+        self.assertEqual({p["appearance"] for p in plan["profiles"]}, {"light", "dark"})
+        self.assertEqual({p["textSize"] for p in plan["profiles"]}, {"standard", "extra"})
+        source = (ROOT / "TestsUI/LocalizationFlowTests.swift").read_text()
+        self.assertEqual(set(plan["pages"]), set(re.findall(r'"(\d\d-[a-z-]+)"', source)))
+        self.assertEqual(len(plan["pages"]), 39)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -84,7 +84,9 @@ final class SizeEstimator: ObservableObject {
         return (bytes, unknown)
     }
 }
-func byteText(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .decimal) }
+func byteText(_ bytes: Int64) -> String {
+    bytes.formatted(ByteCountFormatStyle(style: .decimal, spellsOutZero: false, locale: AppLocalization.locale))
+}
 
 struct MediaInfoView: View {
     let asset: PHAsset
@@ -101,16 +103,16 @@ struct MediaInfoView: View {
                         LabeledContent(L("格式", "Format"), value: resource.uniformTypeIdentifier)
                     }
                     LabeledContent(L("解析度", "Resolution"), value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
-                    LabeledContent(L("總像素", "Megapixels"), value: String(format: "%.2f MP", Double(asset.pixelWidth) * Double(asset.pixelHeight) / 1_000_000))
+                    LabeledContent(L("總像素", "Megapixels"), value: appDecimal(Double(asset.pixelWidth) * Double(asset.pixelHeight) / 1_000_000, digits: 2) + " MP")
                     if let date = asset.creationDate { LabeledContent(L("拍攝日期", "Captured"), value: appDateTime(date)) }
                     if let date = asset.modificationDate { LabeledContent(L("修改日期", "Modified"), value: appDateTime(date)) }
                     if asset.mediaType == .video {
-                        LabeledContent(L("長度", "Duration"), value: String(format: "%.1f s", asset.duration))
-                        LabeledContent(L("影格率", "Frame rate"), value: fps.map { String(format: "%.2f fps", $0) } ?? L("不可用", "Unavailable"))
+                        LabeledContent(L("長度", "Duration"), value: appDecimal(asset.duration, digits: 1) + " s")
+                        LabeledContent(L("影格率", "Frame rate"), value: fps.map { appDecimal(Double($0), digits: 2) + " fps" } ?? L("不可用", "Unavailable"))
                     }
                     if let location = asset.location {
-                        LabeledContent(L("緯度", "Latitude"), value: String(format: "%.6f", location.coordinate.latitude))
-                        LabeledContent(L("經度", "Longitude"), value: String(format: "%.6f", location.coordinate.longitude))
+                        LabeledContent(L("緯度", "Latitude"), value: appDecimal(location.coordinate.latitude, digits: 6))
+                        LabeledContent(L("經度", "Longitude"), value: appDecimal(location.coordinate.longitude, digits: 6))
                     } else { Text(L("未提供位置資訊", "No location metadata")) }
                     Text(L("像素密度與街道地址未由相簿直接提供；不以螢幕密度或推測地址代替。", "Pixel density and street addresses are not directly supplied by the library; display density and guessed addresses are not substituted."))
                         .font(.caption).foregroundStyle(.secondary)
@@ -124,7 +126,7 @@ struct MediaInfoView: View {
                 }
             }
             .navigationTitle(L("詳細資訊", "Details"))
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L("關閉", "Close")) } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L("關閉", "Close")).accessibilityIdentifier("media-info-close") } }
             .task {
                 size = await ResourceSizer.shared.measure(asset)
                 if asset.mediaType == .video {
