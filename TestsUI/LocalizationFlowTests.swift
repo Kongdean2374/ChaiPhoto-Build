@@ -42,18 +42,36 @@ final class LocalizationFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-language", "en", "-onboarding.v2.page", "0", "-preload.mode.v3", "off", "-autoplay", "NO"]
         app.launch()
-        let requestedAccess = app.buttons["photo-access-button"].waitForExistence(timeout: 2)
-        if requestedAccess { app.buttons["photo-access-button"].tap() }
-        if requestedAccess || element(app, "guide-next").exists {
+        let request = app.buttons["photo-access-button"]
+        let guide = element(app, "guide-next")
+        if guide.waitForExistence(timeout: 2) || request.exists {
             activeStep = "photos-consent"
-            // One monotonic deadline, not an alert wait followed by a blind marker wait.
-            // The system sheet can arrive after the former three-second alert window.
             let deadline = ProcessInfo.processInfo.systemUptime + 20
             let fullAccess = element(app, "photo-access-full")
+            var requestAttempted = false
             while ProcessInfo.processInfo.systemUptime < deadline {
+                // Authorization can finish independently, including inside an interruption monitor.
+                if fullAccess.exists { break }
                 _ = grant(springboard.alerts.firstMatch)
                 _ = grant(app.alerts.firstMatch)
                 if fullAccess.exists { break }
+                if !requestAttempted && !consentTapped
+                    && !springboard.alerts.firstMatch.exists && !app.alerts.firstMatch.exists
+                    && request.exists && request.isHittable {
+                    let frame = request.frame
+                    let appFrame = app.frame
+                    let point = CGPoint(x: frame.midX, y: frame.midY)
+                    XCTAssertFalse(frame.isEmpty, "Photos request needs a real visible frame")
+                    XCTAssertTrue(appFrame.contains(point), "Photos request must be inside the app")
+                    XCTAssertFalse(guide.frame.contains(point), "Request tap must never advance the guide")
+                    if fullAccess.exists { break }
+                    requestAttempted = true
+                    // XCTest may handle a late Photos alert before synthesizing this event.
+                    // Anchor to the stable app, NOT the disappearing request element; replay
+                    // then lands on the former permission row, never the guide-next button.
+                    app.coordinate(withNormalizedOffset: .zero)
+                        .withOffset(CGVector(dx: point.x - appFrame.minX, dy: point.y - appFrame.minY)).tap()
+                }
                 let remaining = deadline - ProcessInfo.processInfo.systemUptime
                 if remaining > 0 { _ = fullAccess.waitForExistence(timeout: min(0.5, remaining)) }
             }

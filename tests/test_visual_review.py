@@ -405,8 +405,8 @@ class PhotosConsentSetupContractTests(unittest.TestCase):
     def test_delayed_sheet_is_polled_inside_same_bounded_marker_wait(self):
         loop = self.setup.split("while ProcessInfo.processInfo.systemUptime < deadline {", 1)[1].split("XCTAssertTrue(fullAccess.exists", 1)[0]
         self.assertIn("let deadline = ProcessInfo.processInfo.systemUptime + 20", self.setup)
-        self.assertLess(loop.index("grant(springboard.alerts.firstMatch)"), loop.index("if fullAccess.exists"))
-        self.assertLess(loop.index("grant(app.alerts.firstMatch)"), loop.index("if fullAccess.exists"))
+        self.assertLess(loop.index("if fullAccess.exists"), loop.index("grant(springboard.alerts.firstMatch)"))
+        self.assertLess(loop.index("grant(app.alerts.firstMatch)"), loop.index("if fullAccess.exists", loop.index("grant(app.alerts.firstMatch)")))
         self.assertIn("deadline - ProcessInfo.processInfo.systemUptime", loop)
         self.assertIn("timeout: min(0.5, remaining)", loop)
         self.assertNotIn("timeout: 3", self.setup)
@@ -424,6 +424,29 @@ class PhotosConsentSetupContractTests(unittest.TestCase):
         self.assertIn("ChaiPhoto", grant)
         # No fallback first-button / generic alert acknowledgement.
         self.assertNotIn("alert.buttons.firstMatch.tap()", self.setup)
+
+    def test_request_is_inside_state_loop_after_full_access_and_alert_checks(self):
+        loop = self.setup.split("while ProcessInfo.processInfo.systemUptime < deadline {", 1)[1].split("XCTAssertTrue(fullAccess.exists", 1)[0]
+        guard = loop.index("if !requestAttempted && !consentTapped")
+        for check in ["if fullAccess.exists", "grant(springboard.alerts.firstMatch)", "grant(app.alerts.firstMatch)"]:
+            self.assertLess(loop.index(check), guard)
+        self.assertIn("!springboard.alerts.firstMatch.exists && !app.alerts.firstMatch.exists", loop)
+        self.assertIn("request.exists && request.isHittable", loop)
+        self.assertNotIn("requestedAccess", self.setup)
+
+    def test_request_event_has_stable_app_anchor_and_cannot_requery_disappearing_button(self):
+        loop = self.setup.split("while ProcessInfo.processInfo.systemUptime < deadline {", 1)[1].split("XCTAssertTrue(fullAccess.exists", 1)[0]
+        self.assertIn("app.coordinate(withNormalizedOffset: .zero)", loop)
+        self.assertIn("point.x - appFrame.minX", loop)
+        self.assertIn("point.y - appFrame.minY", loop)
+        self.assertIn('XCTAssertFalse(guide.frame.contains(point), "Request tap must never advance the guide")', loop)
+        self.assertNotIn("request.tap()", self.setup)
+        self.assertNotIn("request.coordinate(", self.setup)
+        self.assertNotIn('app.buttons["photo-access-button"].tap()', self.setup)
+        self.assertLess(loop.index("requestAttempted = true"), loop.index("app.coordinate("))
+        self.assertEqual(loop.count(".tap()"), 1)
+        # Recheck independently completed authorization after frame sampling, before the sole event.
+        self.assertIn("if fullAccess.exists { break }\n                    requestAttempted = true", loop)
 
     def test_real_authorization_guide_and_media_postconditions_and_screenshot_remain(self):
         self.assertIn('let fullAccess = element(app, "photo-access-full")', self.setup)
