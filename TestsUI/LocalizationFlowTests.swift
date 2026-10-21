@@ -109,6 +109,17 @@ final class LocalizationFlowTests: XCTestCase {
         return String(label[range])
     }
 
+    private func assertMinimumTouchExtent(_ extent: CGFloat, _ context: String = "",
+                                          file: StaticString = #filePath, line: UInt = #line) {
+        let minimum: CGFloat = 44
+        // Allow four representable steps at 44 pt (~2.84e-14 pt on iOS 64-bit)
+        // for coordinate-conversion round-off, not a smaller physical target.
+        let epsilon = minimum.ulp * 4
+        XCTAssertTrue(extent.isFinite && extent >= minimum - epsilon,
+                      "\(context): expected nominal >= \(minimum) pt with round-off epsilon \(epsilon); actual \(extent) pt",
+                      file: file, line: line)
+    }
+
     private func clearDiagnosticsCentre(_ app: XCUIApplication, _ target: XCUIElement) -> Bool {
         let frame = target.frame
         let point = CGPoint(x: frame.midX, y: frame.midY)
@@ -147,8 +158,8 @@ final class LocalizationFlowTests: XCTestCase {
             // unrecorded XCTest-selected point or a retry that hides a miss.
             let frame = target.frame
             let centre = CGPoint(x: frame.midX, y: frame.midY)
-            XCTAssertGreaterThanOrEqual(frame.width, 44, id, file: file, line: line)
-            XCTAssertGreaterThanOrEqual(frame.height, 44, id, file: file, line: line)
+            assertMinimumTouchExtent(frame.width, id, file: file, line: line)
+            assertMinimumTouchExtent(frame.height, id, file: file, line: line)
             XCTAssertTrue(app.frame.contains(centre), id, file: file, line: line)
             if id == "diagnostics-copy" {
                 XCTAssertTrue(clearDiagnosticsCentre(app, target),
@@ -336,7 +347,7 @@ final class LocalizationFlowTests: XCTestCase {
             for id in ["review-delete-selected", "review-restore-selected"] {
                 let button = element(app, id)
                 XCTAssertTrue(button.isHittable, id)
-                XCTAssertGreaterThanOrEqual(button.frame.height, 44, id)
+                assertMinimumTouchExtent(button.frame.height, id)
                 XCTAssertFalse(button.label.contains("…"), id)
             }
             scrollPage(app)
@@ -552,7 +563,7 @@ final class LocalizationFlowTests: XCTestCase {
         for id in ["photo-mark-delete", "photo-keep"] {
             let button = control(app, id)
             waitUntilHittable(button, "The full photo action must be reachable")
-            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            assertMinimumTouchExtent(button.frame.height, id)
         }
         capture(app, activeProfile, "06-sort")
         element(app, "rendered-media-image").swipeUp()
@@ -573,8 +584,8 @@ final class LocalizationFlowTests: XCTestCase {
         for id in ["video-sound", "video-mark-delete", "video-share"] {
             let button = control(app, id)
             waitUntilHittable(button, "The full video action must be reachable: " + id)
-            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
-            XCTAssertGreaterThanOrEqual(button.frame.width, 44)
+            assertMinimumTouchExtent(button.frame.height, id)
+            assertMinimumTouchExtent(button.frame.width, id)
             XCTAssertFalse(button.label.contains("…"))
         }
         capture(app, activeProfile, "37-video")
@@ -594,7 +605,7 @@ final class LocalizationFlowTests: XCTestCase {
         for id in ["review-delete-selected", "review-restore-selected"] {
             let button = control(app, id)
             waitUntilHittable(button, "Review controls must retain full touch targets")
-            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            assertMinimumTouchExtent(button.frame.height, id)
             XCTAssertFalse(button.label.contains("…"))
         }
         scrollPage(app)

@@ -139,6 +139,49 @@ class VisualEvidenceTests(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in output.iterdir()), ["jpeg.jpg", "screenshot.png"])
 
 
+class TouchExtentPrecisionTests(unittest.TestCase):
+    """Exercise the exact finite Double comparison and constants in the Swift helper.
+
+    This is an offline numerical boundary check, not execution of Swift/XCTest.
+    """
+    @classmethod
+    def setUpClass(cls):
+        import math
+        import re
+        source = (ROOT / "TestsUI/LocalizationFlowTests.swift").read_text()
+        helper = source.split("    private func assertMinimumTouchExtent(", 1)[1].split("    private func clearDiagnosticsCentre(", 1)[0]
+        cls.minimum = float(re.search(r"let minimum: CGFloat = ([0-9]+)", helper).group(1))
+        cls.steps = int(re.search(r"let epsilon = minimum[.]ulp \* ([0-9]+)", helper).group(1))
+        cls.epsilon = math.ulp(cls.minimum) * cls.steps
+        # Fail if the native predicate stops matching the expression exercised here.
+        if "XCTAssertTrue(extent.isFinite && extent >= minimum - epsilon," not in helper:
+            raise AssertionError("The Swift boundary predicate changed; review the numerical regression")
+
+    def accepted(self, extent):
+        import math
+        return math.isfinite(extent) and extent >= self.minimum - self.epsilon
+
+    def test_nominal_44_and_observed_one_ulp_error_pass(self):
+        import math
+        self.assertEqual(self.minimum, 44.0)
+        for value in (44.0, 43.99999999999999, math.nextafter(44.0, -math.inf), 45.0):
+            with self.subTest(value=value): self.assertTrue(self.accepted(value))
+
+    def test_four_ulp_budget_is_tiny_and_the_fifth_step_fails(self):
+        import math
+        self.assertEqual(self.steps, 4)
+        self.assertEqual(self.epsilon, 2.842170943040401e-14)
+        value = self.minimum
+        for _ in range(4): value = math.nextafter(value, -math.inf)
+        self.assertTrue(self.accepted(value))
+        self.assertFalse(self.accepted(math.nextafter(value, -math.inf)))
+
+    def test_materially_smaller_and_nonfinite_extents_fail(self):
+        import math
+        for value in (43.9999999999999, 43.999999, 43.999, 43.9, 43.0, 0.0, -1.0, math.nan, math.inf, -math.inf):
+            with self.subTest(value=value): self.assertFalse(self.accepted(value))
+
+
 class ValidationStageTests(unittest.TestCase):
     """Execute the real Bash orchestration; stubs model tools, not App/UI results."""
     def scenario(self, scope, fail_quick=False, profile="fr-dark-extra"):
