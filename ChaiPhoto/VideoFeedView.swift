@@ -13,6 +13,7 @@ struct VideoFeedView: View {
     @EnvironmentObject private var mediaPreloader: MediaPreloader
     @EnvironmentObject private var updateManager: AppUpdateManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var info = false
     @State private var share: ShareFile?
@@ -66,28 +67,31 @@ struct VideoFeedView: View {
                 }
                 .offset(y: offset)
 
-                VStack(spacing: 14) {
-                    side(
-                        settings.muted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                        settings.muted ? L("靜音", "Muted") : L("聲音", "Sound"),
-                        color: .indigo
-                    ) {
-                        settings.muted.toggle()
-                    }
-                    side("rectangle.stack.badge.plus", L("相簿", "Album"), color: .indigo) {
-                        openAlbumAction()
-                    }
-                    side("trash", L("待刪", "Delete"), color: .red) {
-                        advance(.delete)
-                    }
-                    side("square.and.arrow.up", preparing ? L("準備中", "Preparing") : L("分享", "Share")) {
-                        shareVideo()
-                    }
-                    side("ellipsis.circle", L("更多", "More")) {
-                        info = true
+                ScrollView(.vertical) {
+                    VStack(spacing: 10) {
+                        side(
+                            settings.muted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                            settings.muted ? L("靜音", "Muted") : L("聲音", "Sound"),
+                            color: .indigo, id: "video-sound"
+                        ) {
+                            settings.muted.toggle()
+                        }
+                        side("rectangle.stack.badge.plus", L("相簿", "Album"), color: .indigo, id: "video-album") {
+                            openAlbumAction()
+                        }
+                        side("trash", L("待刪", "Delete"), color: .red, id: "video-mark-delete") {
+                            advance(.delete)
+                        }
+                        side("square.and.arrow.up", preparing ? L("準備中", "Preparing") : L("分享", "Share"), id: "video-share") {
+                            shareVideo()
+                        }
+                        side("ellipsis.circle", L("更多", "More"), id: "video-more") {
+                            info = true
+                        }
                     }
                 }
-                .frame(width: 52)
+                .scrollIndicators(.hidden)
+                .frame(width: dynamicTypeSize >= .xxLarge ? 100 : 76)
             }
             .padding(.horizontal, 8)
             .clipped()
@@ -162,6 +166,7 @@ struct VideoFeedView: View {
         _ symbol: String,
         _ label: String,
         color: Color = .primary,
+        id: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -170,12 +175,15 @@ struct VideoFeedView: View {
                 Text(label)
                     .font(.caption2)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(color)
-            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
         }
         .disabled(leaving || favoriteWorking)
         .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
         .accessibilityHint(
             label == L("待刪", "Delete")
                 ? L("將目前影片標記為待刪，不會立即永久刪除。", "Marks the current video for deletion without deleting it immediately.")

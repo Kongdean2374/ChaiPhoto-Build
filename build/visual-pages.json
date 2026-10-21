@@ -62,5 +62,25 @@
   ],
   "device": "iPhone SE (3rd generation)",
   "maximum_width_points": 375,
-  "notes": "Synthetic Photos media only. This is an acceptance plan, not evidence of successful rendering. Cloud-only/download-failure states and real-device power/FPS require separate verification."
+  "notes": "Synthetic Photos media only. This is an acceptance plan, not evidence of successful rendering. Cloud-only/download-failure states and real-device power/FPS require separate verification.",
+  "focused_pages": [
+    "06-sort",
+    "09-filters",
+    "14-review-bottom",
+    "21-support",
+    "22-diagnostics-safety",
+    "26-history",
+    "30-album-picker",
+    "31-new-album",
+    "37-video"
+  ],
+  "focused_replay_profile": "fr-dark-extra",
+  "baseline": {
+    "run": 39551048616,
+    "public_sha": "f9ca498a29b09fd4909a08599481ce2f858714a3",
+    "testflight_full_tests": "43/43",
+    "appstore_full_tests": "41/43",
+    "reuse": "Unchanged first-run language matching/lock/migration, ordinary filtering, state/queue/unit coverage and unaffected pages remain evidence at this baseline only; never relabel old images as new.",
+    "rerun": "Current SHA: both device flavors, 26 unit + 4 lifecycle UI smoke tests, navigation/manual-language/diagnostics probes, 12 focused profiles, complete French dark-extra profile. The complete original matrix remains available via full."
+  }
 }

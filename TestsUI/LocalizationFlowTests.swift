@@ -109,6 +109,19 @@ final class LocalizationFlowTests: XCTestCase {
         return String(label[range])
     }
 
+    private func clearDiagnosticsCentre(_ app: XCUIApplication, _ target: XCUIElement) -> Bool {
+        let frame = target.frame
+        let point = CGPoint(x: frame.midX, y: frame.midY)
+        guard app.frame.contains(point) else { return false }
+        // A partially visible List row can be hittable while its centre is
+        // covered by the floating tab bar or navigation bar. Scroll it clear
+        // before the single tap, never retry a failed presentation.
+        for bar in [app.tabBars.firstMatch, app.navigationBars.firstMatch] {
+            if bar.exists && bar.frame.contains(point) { return false }
+        }
+        return true
+    }
+
     private func tap(_ app: XCUIApplication, _ id: String, scroll: Bool = false,
                      file: StaticString = #filePath, line: UInt = #line) {
         activeStep = "tap-" + id
@@ -122,13 +135,39 @@ final class LocalizationFlowTests: XCTestCase {
             // Form/List may not create an off-screen row until it is scrolled
             // into view. Requiring existence first prevents the scroll itself.
             for _ in 0..<8 {
-                if target.exists && target.isHittable { break }
+                if target.exists && target.isHittable && (id != "diagnostics-copy" || clearDiagnosticsCentre(app, target)) { break }
                 scrollPage(app)
             }
         }
         XCTAssertTrue(target.waitForExistence(timeout: 8), id, file: file, line: line)
         waitUntilHittable(target, "Must remain reachable at the real screen size: " + id, file: file, line: line)
-        target.tap()
+        if ["media-info-close", "diagnostics-copy"].contains(id) {
+            // Preserve native hittability and use one physical tap in the
+            // visible control's centre. Record the exact intended hit, not an
+            // unrecorded XCTest-selected point or a retry that hides a miss.
+            let frame = target.frame
+            let centre = CGPoint(x: frame.midX, y: frame.midY)
+            XCTAssertGreaterThanOrEqual(frame.width, 44, id, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(frame.height, 44, id, file: file, line: line)
+            XCTAssertTrue(app.frame.contains(centre), id, file: file, line: line)
+            if id == "diagnostics-copy" {
+                XCTAssertTrue(clearDiagnosticsCentre(app, target),
+                              "The actual tap must be clear of navigation and tab bars", file: file, line: line)
+            }
+            print("Physical tap [\(activeProfile), \(id)]: frame=\(frame), centre=\(centre), type=\(target.elementType.rawValue)")
+            target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        } else {
+            target.tap()
+        }
+        if id == "photo-information" {
+            activeStep = "present-media-information"
+            waitUntilHittable(control(app, "media-info-close"), "The real information sheet must open",
+                             file: file, line: line)
+        } else if id == "diagnostics-copy" {
+            activeStep = "present-diagnostics-alert"
+            XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 8),
+                          "One tap must present the real diagnostics consent alert", file: file, line: line)
+        }
         let returningTo = ["media-preview-close": "photo-information", "media-info-close": "photo-information",
                            "album-picker-cancel": "photo-information", "album-new-cancel": "album-picker-new",
                            "filter-cancel": "sort-filters", "history-filter-done": "history-filter",
@@ -136,6 +175,10 @@ final class LocalizationFlowTests: XCTestCase {
                            "summary-done": "sort-summary-button"]
         if let destination = returningTo[id] {
             activeStep = "return-from-" + id
+            if ["diagnostics-cancel", "album-new-cancel", "review-cancel-delete"].contains(id) {
+                XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 10),
+                              "The actual alert must close: " + id, file: file, line: line)
+            }
             XCTAssertTrue(element(app, id).waitForNonExistence(timeout: 10),
                           "The preceding surface must actually close: " + id, file: file, line: line)
             waitUntilHittable(control(app, destination), "Return destination must be usable: " + destination,
@@ -262,10 +305,10 @@ final class LocalizationFlowTests: XCTestCase {
             tap(app, "sort-filters")
             tap(app, "filter-source-videos")
             tap(app, "filter-kind-all")
-            capture(app, prefix, "36-video-entry")
             XCTAssertTrue(element(app, "video-ready").waitForExistence(timeout: 15), "The real local video must become ready")
             let poster = element(app, "video-poster")
             XCTAssertTrue(poster.waitForExistence(timeout: 10), "A real Photos video poster is required")
+            capture(app, prefix, "36-video-entry")
             capture(app, prefix, "37-video")
             poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element(app, "video-ready"))
@@ -386,6 +429,8 @@ final class LocalizationFlowTests: XCTestCase {
             XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
             XCUIDevice.shared.press(.home); app.activate()
             XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
+            XCTAssertTrue(element(app, "rendered-media-image").waitForExistence(timeout: 10),
+                          "The relaunched photo must render before visual acceptance")
             capture(app, prefix, "29-relaunch-language-locked")
             app.terminate()
         }
@@ -457,8 +502,123 @@ final class LocalizationFlowTests: XCTestCase {
         }
     }
 
+    /// Small reproduction of the full20 missing-alert path. One tap per attempt;
+    /// presentation and dismissal must both succeed before the next attempt.
+    func testDiagnosticsPresentationQuick() {
+        executionTimeAllowance = 240
+        activeProfile = "probe-diagnostics-fr-dark-extra"
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchArguments = ["-language", "fr", "-appearance", "dark", "-textSize", "extra",
+                               "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
+        app.launch()
+        tab(app, 2)
+        tap(app, "settings-support", scroll: true)
+        for round in 0..<2 {
+            tap(app, "diagnostics-copy", scroll: true)
+            capture(app, activeProfile, "diagnostics-round-\(round)")
+            tap(app, "diagnostics-cancel")
+            XCTAssertFalse(app.alerts.firstMatch.exists)
+        }
+        back(app)
+        tab(app, 0)
+    }
+
+    func testLayout00zhHantLight() { runLayoutProfile(code: "zh-Hant", theme: "light", size: "standard") }
+    func testLayout00zhHantDarkLarge() { runLayoutProfile(code: "zh-Hant", theme: "dark", size: "extra") }
+    func testLayout01zhHansLight() { runLayoutProfile(code: "zh-Hans", theme: "light", size: "standard") }
+    func testLayout01zhHansDarkLarge() { runLayoutProfile(code: "zh-Hans", theme: "dark", size: "extra") }
+    func testLayout02enLight() { runLayoutProfile(code: "en", theme: "light", size: "standard") }
+    func testLayout02enDarkLarge() { runLayoutProfile(code: "en", theme: "dark", size: "extra") }
+    func testLayout03jaLight() { runLayoutProfile(code: "ja", theme: "light", size: "standard") }
+    func testLayout03jaDarkLarge() { runLayoutProfile(code: "ja", theme: "dark", size: "extra") }
+    func testLayout04esLight() { runLayoutProfile(code: "es", theme: "light", size: "standard") }
+    func testLayout04esDarkLarge() { runLayoutProfile(code: "es", theme: "dark", size: "extra") }
+    func testLayout05frLight() { runLayoutProfile(code: "fr", theme: "light", size: "standard") }
+    func testLayout05frDarkLarge() { runLayoutProfile(code: "fr", theme: "dark", size: "extra") }
+
+    /// Only the affected views, using real synthetic Photos assets. The original
+    /// 39-page matrix remains independent and available as the complete gate.
+    private func runLayoutProfile(code: String, theme: String, size: String) {
+        executionTimeAllowance = 300
+        activeProfile = "focused-" + code + "-" + theme + "-" + size
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchArguments = ["-language", code, "-appearance", theme, "-textSize", size,
+                               "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
+        app.launch()
+        XCTAssertLessThanOrEqual(app.frame.width, 375)
+        XCTAssertTrue(element(app, "rendered-media-image").waitForExistence(timeout: 10))
+        for id in ["photo-mark-delete", "photo-keep"] {
+            let button = control(app, id)
+            waitUntilHittable(button, "The full photo action must be reachable")
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+        }
+        capture(app, activeProfile, "06-sort")
+        element(app, "rendered-media-image").swipeUp()
+        XCTAssertTrue(element(app, "album-picker-title").waitForExistence(timeout: 8))
+        XCTAssertTrue(element(app, "album-picker-title").isHittable)
+        capture(app, activeProfile, "30-album-picker")
+        tap(app, "album-picker-new")
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 8))
+        capture(app, activeProfile, "31-new-album")
+        tap(app, "album-new-cancel")
+        tap(app, "album-picker-cancel")
+        tap(app, "sort-filters")
+        capture(app, activeProfile, "09-filters")
+        tap(app, "filter-source-videos")
+        tap(app, "filter-kind-all")
+        XCTAssertTrue(element(app, "video-ready").waitForExistence(timeout: 15))
+        XCTAssertTrue(element(app, "video-poster").waitForExistence(timeout: 10))
+        for id in ["video-sound", "video-mark-delete", "video-share"] {
+            let button = control(app, id)
+            waitUntilHittable(button, "The full video action must be reachable: " + id)
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(button.frame.width, 44)
+            XCTAssertFalse(button.label.contains("…"))
+        }
+        capture(app, activeProfile, "37-video")
+        tap(app, "sort-filters")
+        tap(app, "filter-source-photos")
+        tap(app, "filter-kind-all")
+        for _ in 0..<2 {
+            let remaining = element(app, "sort-remaining")
+            let before = Int(remaining.label.replacingOccurrences(of: ",", with: "")) ?? 0
+            XCTAssertGreaterThan(before, 1)
+            tap(app, "photo-mark-delete")
+            XCTAssertTrue(remaining.wait(for: \.label, toEqual: String(before - 1), timeout: 8))
+        }
+        tab(app, 1)
+        let delete = control(app, "review-delete-selected")
+        for _ in 0..<8 { if delete.isHittable { break }; scrollPage(app) }
+        for id in ["review-delete-selected", "review-restore-selected"] {
+            let button = control(app, id)
+            waitUntilHittable(button, "Review controls must retain full touch targets")
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            XCTAssertFalse(button.label.contains("…"))
+        }
+        scrollPage(app)
+        capture(app, activeProfile, "14-review-bottom")
+        tab(app, 2)
+        tap(app, "settings-support", scroll: true)
+        capture(app, activeProfile, "21-support")
+        tap(app, "diagnostics-copy", scroll: true)
+        capture(app, activeProfile, "22-diagnostics-safety")
+        tap(app, "diagnostics-cancel")
+        back(app)
+        tap(app, "settings-information", scroll: true)
+        tap(app, "information-history", scroll: true)
+        tap(app, "history-sorting")
+        capture(app, activeProfile, "26-history")
+        tab(app, 1)
+        tap(app, "review-restore-selected", scroll: true)
+        tab(app, 0)
+        XCTAssertTrue(element(app, "rendered-media-image").waitForExistence(timeout: 10))
+    }
+
     func testManualLanguageChangePreservesPendingItemsAndCurrentPhoto() {
         executionTimeAllowance = 300
+        activeProfile = "probe-manual-language-relaunch"
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-language", "en", "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]

@@ -77,15 +77,46 @@ def collect(bundle, destination):
 
 
 def require_screenshots(count, arguments):
-    if "--require-quick" in arguments and count < 8:
-        raise SystemExit(f"Quick navigation requires 8 actual screenshots per flavor; retained {count}")
+    if "--require-quick" in arguments and count < 10:
+        raise SystemExit(f"Quick probes require 10 actual screenshots per flavor; retained {count}")
     if "--require-complete" in arguments:
         plan = json.loads((Path(__file__).resolve().parents[1] / "build/visual-pages.json").read_text())
         expected = plan["legacy_screenshots_per_flavor"] + len(plan["languages"]) * len(plan["profiles"]) * len(plan["pages"])
         if count < expected:
             raise SystemExit(f"Six-language visual review requires {expected} actual screenshots per flavor; retained {count}")
+    if "--require-layout" in arguments and count < 9:
+        raise SystemExit(f"Selected layout requires 9 actual screenshots per flavor; retained {count}")
+    if "--require-focused" in arguments:
+        plan = json.loads((Path(__file__).resolve().parents[1] / "build/visual-pages.json").read_text())
+        expected = plan["legacy_screenshots_per_flavor"] + len(plan["pages"]) + len(plan["languages"]) * len(plan["profiles"]) * len(plan["focused_pages"])
+        if count < expected:
+            raise SystemExit(f"Impact acceptance requires {expected} actual screenshots per flavor; retained {count}")
+
+
+def require_named_pages(destination, arguments):
+    """Extra screenshots cannot stand in for a missing affected language/page."""
+    if not any(flag in arguments for flag in ("--require-focused", "--require-layout")):
+        return
+    plan = json.loads((Path(__file__).resolve().parents[1] / "build/visual-pages.json").read_text())
+    profiles = [f'{language}-{profile["appearance"]}-{profile["textSize"]}'
+                for language in plan["languages"] for profile in plan["profiles"]]
+    if "--require-layout" in arguments:
+        selected = next((value.split("=", 1)[1] for value in arguments if value.startswith("--layout-profile=")), None)
+        if selected not in profiles:
+            raise SystemExit("A supported --layout-profile is required")
+        profiles = [selected]
+    required = {f"visual-l128-focused-{profile}-{page}"
+                for profile in profiles for page in plan["focused_pages"]}
+    if "--require-focused" in arguments:
+        required.update(f'visual-l128-{plan["focused_replay_profile"]}-{page}' for page in plan["pages"])
+    # xcresult adds _0_<UUID>__<UUID> after the attachment's hyphenated name.
+    actual = {path.stem.split("_", 1)[0] for path in destination.iterdir() if path.is_file()}
+    missing = sorted(required - actual)
+    if missing:
+        raise SystemExit("Missing named current-SHA screenshots: " + ", ".join(missing))
 
 
 if __name__ == "__main__":
     bundle, destination = map(Path, sys.argv[1:3])
     require_screenshots(collect(bundle, destination), sys.argv[3:])
+    require_named_pages(destination, sys.argv[3:])

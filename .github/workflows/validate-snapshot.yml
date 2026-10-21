@@ -8,11 +8,17 @@ on:
         required: true
         type: string
       validation_scope:
-        description: Run quick navigation reproduction first; full also runs every acceptance test
+        description: quick probes, layout one profile, focused impact acceptance, or full matrix
         required: true
         default: quick
         type: choice
-        options: [quick, full]
+        options: [quick, layout, focused, full]
+      layout_profile:
+        description: Used only by layout scope; real narrow-screen language/theme/text-size profile
+        required: true
+        default: fr-dark-extra
+        type: choice
+        options: [zh-Hant-light-standard, zh-Hant-dark-extra, zh-Hans-light-standard, zh-Hans-dark-extra, en-light-standard, en-dark-extra, ja-light-standard, ja-dark-extra, es-light-standard, es-dark-extra, fr-light-standard, fr-dark-extra]
 permissions:
   contents: read
 concurrency:
@@ -28,11 +34,12 @@ jobs:
       max-parallel: 2
       matrix:
         flavor: [Release-TestFlight, Release-AppStore]
-    timeout-minutes: ${{ inputs.validation_scope == 'quick' && 25 || 120 }}
+    timeout-minutes: ${{ inputs.validation_scope == 'full' && 120 || inputs.validation_scope == 'focused' && 65 || 25 }}
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       VALIDATION_FLAVOR: ${{ matrix.flavor }}
       VALIDATION_SCOPE: ${{ inputs.validation_scope }}
+      LAYOUT_PROFILE: ${{ inputs.layout_profile }}
     steps:
       - name: Checkout exact dispatched public source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,7 +69,7 @@ jobs:
             plutil -lint "$localization/Localizable.strings" "$localization/Localizable.stringsdict" "$localization/InfoPlist.strings"
           done
       - name: Compile assigned unsigned iPhoneOS flavor
-        if: inputs.validation_scope == 'full'
+        if: inputs.validation_scope == 'full' || inputs.validation_scope == 'focused'
         shell: bash
         run: |
           set -euo pipefail
@@ -78,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "$VALIDATION_SCOPE" in quick|full) ;; *) echo 'Unsupported validation scope'; exit 1 ;; esac
+          case "$VALIDATION_SCOPE" in quick|layout|focused|full) ;; *) echo 'Unsupported validation scope'; exit 1 ;; esac
           xcodegen generate --spec project-tests.yml
           RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["name"].startswith("iOS")))')
           python3 scripts/make_visual_fixtures.py "$RUNNER_TEMP/visual-fixtures"
@@ -96,41 +103,65 @@ jobs:
             xcrun simctl bootstatus "$DEVICE_ID" -b
             xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP"/visual-fixtures/*.png "$RUNNER_TEMP"/visual-fixtures/*.mov
           }
-          boot_fixture quick
-          if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
-            -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
-            -resultBundlePath "$RUNNER_TEMP/quick-$config.xcresult" \
-            -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick \
-            -test-timeouts-enabled YES -default-test-execution-time-allowance 480 \
-            -maximum-test-execution-time-allowance 480 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test; then
-            echo "Targeted navigation $config: PASS" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Targeted navigation $config: FAIL; full matrix not started" >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          cleanup
-          DEVICE_ID=''
-          if test "$VALIDATION_SCOPE" = full; then
-            # The full suite needs a fresh Photos/onboarding state. Reuse compiled
-            # test products, not the quick test's simulator or saved choices.
-            boot_fixture full
+          layout_methods=(testLayout00zhHantLight testLayout00zhHantDarkLarge testLayout01zhHansLight testLayout01zhHansDarkLarge testLayout02enLight testLayout02enDarkLarge testLayout03jaLight testLayout03jaDarkLarge testLayout04esLight testLayout04esDarkLarge testLayout05frLight testLayout05frDarkLarge)
+          layout_profiles=(zh-Hant-light-standard zh-Hant-dark-extra zh-Hans-light-standard zh-Hans-dark-extra en-light-standard en-dark-extra ja-light-standard ja-dark-extra es-light-standard es-dark-extra fr-light-standard fr-dark-extra)
+          if test "$VALIDATION_SCOPE" != layout; then
+            boot_fixture quick
             if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
               -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
               -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
-              -resultBundlePath "$RUNNER_TEMP/test-$config.xcresult" \
-              -skip-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick \
-              -test-timeouts-enabled YES -default-test-execution-time-allowance 900 \
-              -maximum-test-execution-time-allowance 900 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
-              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test-without-building; then
-              echo "Full XCTest + 12 visual profiles $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+              -resultBundlePath "$RUNNER_TEMP/quick-$config.xcresult" \
+              -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick \
+              -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testManualLanguageChangePreservesPendingItemsAndCurrentPhoto \
+              -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testDiagnosticsPresentationQuick \
+              -test-timeouts-enabled YES -default-test-execution-time-allowance 480 \
+              -maximum-test-execution-time-allowance 480 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test; then
+              echo "Navigation + relaunch dismissal + diagnostics $config: PASS" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "Full XCTest + 12 visual profiles $config: FAIL" >> "$GITHUB_STEP_SUMMARY"
+              echo "Targeted probes $config: FAIL; acceptance suite not started" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
+            cleanup
+            DEVICE_ID=''
+          fi
+          if test "$VALIDATION_SCOPE" = quick; then
+            echo "Visual acceptance: NOT RUN (quick scope)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Fresh media/permission/guide state for lifecycle tests. Compiled test
+          # products may be reused, but the probes' saved choices may not.
+          boot_fixture full
+          test_action=test-without-building
+          suite_args=(-skip-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick -skip-testing:ChaiPhotoUITests/LocalizationFlowTests/testDiagnosticsPresentationQuick)
+          if test "$VALIDATION_SCOPE" = layout; then
+            selected=''
+            for index in "${!layout_profiles[@]}"; do
+              if test "${layout_profiles[$index]}" = "$LAYOUT_PROFILE"; then selected="${layout_methods[$index]}"; fi
+            done
+            if test -z "$selected"; then echo 'Unsupported layout profile'; exit 1; fi
+            test_action=test
+            suite_args=(-only-testing:ChaiPhotoTests "-only-testing:ChaiPhotoUITests/LocalizationFlowTests/$selected")
+          elif test "$VALIDATION_SCOPE" = focused; then
+            suite_args=(-only-testing:ChaiPhotoTests -only-testing:ChaiPhotoUITests/LaunchFlowTests -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testMatrix05frDarkLarge)
+            for method in "${layout_methods[@]}"; do suite_args+=("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/$method"); done
           else
-            echo "Full visual acceptance: NOT RUN (quick scope)" >> "$GITHUB_STEP_SUMMARY"
+            # These new short profiles duplicate the same views in the unchanged
+            # full matrix. All original 43 full tests remain selected.
+            for method in "${layout_methods[@]}"; do suite_args+=("-skip-testing:ChaiPhotoUITests/LocalizationFlowTests/$method"); done
+          fi
+          if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
+            -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
+            -resultBundlePath "$RUNNER_TEMP/test-$config.xcresult" \
+            "${suite_args[@]}" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 900 \
+            -maximum-test-execution-time-allowance 900 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' "$test_action"; then
+            echo "$VALIDATION_SCOPE acceptance $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "$VALIDATION_SCOPE acceptance $config: FAIL" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
       - name: Export actual simulator screenshot attachments
         if: always()
@@ -148,17 +179,22 @@ jobs:
               elif ! python3 scripts/collect_visual_review.py "$quick_bundle" "$RUNNER_TEMP/visual-review/$config/quick"; then
                 status=1
               fi
-            elif test "$TESTS_SUCCEEDED" = true; then
+            elif test "$TESTS_SUCCEEDED" = true && test "$VALIDATION_SCOPE" != layout; then
               status=1
             fi
             bundle="$RUNNER_TEMP/test-$config.xcresult"
             if test -d "$bundle"; then
               if test "$TESTS_SUCCEEDED" = true; then
-                if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" --require-complete; then status=1; fi
+                case "$VALIDATION_SCOPE" in
+                  full) if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" --require-complete; then status=1; fi ;;
+                  focused) if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" --require-focused; then status=1; fi ;;
+                  layout) if ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config" --require-layout "--layout-profile=$LAYOUT_PROFILE"; then status=1; fi ;;
+                  *) echo 'Unexpected acceptance bundle for this scope'; status=1 ;;
+                esac
               elif ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config"; then
                 status=1
               fi
-            elif test "$TESTS_SUCCEEDED" = true && test "$VALIDATION_SCOPE" = full; then
+            elif test "$TESTS_SUCCEEDED" = true && test "$VALIDATION_SCOPE" != quick; then
               status=1
             fi
           done

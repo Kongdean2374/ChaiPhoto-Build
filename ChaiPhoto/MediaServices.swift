@@ -126,7 +126,18 @@ struct MediaInfoView: View {
                 }
             }
             .navigationTitle(L("詳細資訊", "Details"))
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L("關閉", "Close")).accessibilityIdentifier("media-info-close") } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L("關閉", "Close"))
+                    .accessibilityIdentifier("media-info-close")
+                }
+            }
             .task {
                 size = await ResourceSizer.shared.measure(asset)
                 if asset.mediaType == .video {

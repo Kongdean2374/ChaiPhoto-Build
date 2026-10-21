@@ -25,8 +25,8 @@ class VisualEvidenceTests(unittest.TestCase):
             base = Path(directory)
             (base / "bin").mkdir()
             for flavor in ("Release-TestFlight", "Release-AppStore"):
-                (base / f"quick-{flavor}.xcresult").mkdir()
-                if scope == "full":
+                if scope != "layout": (base / f"quick-{flavor}.xcresult").mkdir()
+                if scope != "quick":
                     (base / f"test-{flavor}.xcresult").mkdir()
             stub = base / "bin/python3"
             stub.write_text(f"#!{sys.executable}\n" +
@@ -37,7 +37,7 @@ class VisualEvidenceTests(unittest.TestCase):
             log = base / "calls.jsonl"
             env = {**os.environ, "RUNNER_TEMP": str(base), "TESTS_SUCCEEDED": str(succeeded).lower(),
                    "PATH": str(base / "bin") + os.pathsep + os.environ["PATH"],
-                   "STUB_LOG": str(log), "FAIL_FIRST": str(fail_first).lower(), "VALIDATION_SCOPE": scope}
+                   "STUB_LOG": str(log), "FAIL_FIRST": str(fail_first).lower(), "VALIDATION_SCOPE": scope, "LAYOUT_PROFILE": "fr-dark-extra"}
             # /bin/bash is Bash 3.2 on the macOS runner. Exercise the failure branch,
             # which previously aborted on an empty array under nounset.
             # The workflow assigns each flavor its own runner. Execute the real
@@ -48,23 +48,65 @@ class VisualEvidenceTests(unittest.TestCase):
                                               env={**env, "VALIDATION_FLAVOR": flavor},
                                               capture_output=True, text=True))
             calls = [json.loads(line) for line in log.read_text().splitlines()]
-            per_flavor = 2 if scope == "full" else 1
+            per_flavor = 2 if scope in ("full", "focused") else 1
             self.assertEqual(len(calls), 2 * per_flavor, "\n".join(r.stderr for r in results))
             self.assertIn("Release-TestFlight", calls[0][1])
             self.assertIn("Release-AppStore", calls[per_flavor][1])
             self.assertEqual([r.returncode for r in results], [int(fail_first), 0],
                              "\n".join(r.stderr for r in results))
             for call in calls:
-                flag = "--require-quick" if "quick-Release" in call[1] else "--require-complete"
-                self.assertEqual(call[3:], [flag] if succeeded else [])
+                flags = (["--require-quick"] if "quick-Release" in call[1] else
+                         ["--require-layout", "--layout-profile=fr-dark-extra"] if scope == "layout" else
+                         ["--require-focused"] if scope == "focused" else ["--require-complete"])
+                self.assertEqual(call[3:], flags if succeeded else [])
 
     def test_quick_success_exports_quick_evidence_without_a_full_matrix_bundle(self):
         self.export_step(True, scope="quick")
 
     def test_quick_completeness_rejects_partial_images(self):
-        with self.assertRaisesRegex(SystemExit, "requires 8 actual"):
-            COLLECTOR.require_screenshots(7, ["--require-quick"])
-        COLLECTOR.require_screenshots(8, ["--require-quick"])
+        with self.assertRaisesRegex(SystemExit, "require 10 actual"):
+            COLLECTOR.require_screenshots(9, ["--require-quick"])
+        COLLECTOR.require_screenshots(10, ["--require-quick"])
+
+    def test_new_scopes_export_their_actual_evidence(self):
+        self.export_step(True, scope="layout")
+        self.export_step(True, scope="focused")
+        self.export_step(False, scope="layout")
+        self.export_step(False, scope="focused")
+
+    def test_focused_count_and_exact_names_cannot_hide_missing_french_pages(self):
+        with self.assertRaisesRegex(SystemExit, "requires 155 actual"):
+            COLLECTOR.require_screenshots(154, ["--require-focused"])
+        COLLECTOR.require_screenshots(155, ["--require-focused"])
+        plan = json.loads((ROOT / "build/visual-pages.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)
+            for language in plan["languages"]:
+                for profile in plan["profiles"]:
+                    name = f'{language}-{profile["appearance"]}-{profile["textSize"]}'
+                    for page in plan["focused_pages"]:
+                        (destination / f"visual-l128-focused-{name}-{page}_0_ACTUAL-ID__exported.png").touch()
+            for page in plan["pages"]:
+                (destination / f'visual-l128-{plan["focused_replay_profile"]}-{page}_0_ID__exported.png').touch()
+            COLLECTOR.require_named_pages(destination, ["--require-focused"])
+            missing = destination / 'visual-l128-fr-dark-extra-23-information_0_ID__exported.png'
+            missing.rename(destination / 'visual-l128-fr-dark-extra-22-diagnostics-safety_1_OTHER__exported.png')
+            with self.assertRaisesRegex(SystemExit, "fr-dark-extra-23-information"):
+                COLLECTOR.require_named_pages(destination, ["--require-focused"])
+
+    def test_selected_layout_requires_all_nine_named_pages_and_a_valid_profile(self):
+        plan = json.loads((ROOT / "build/visual-pages.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)
+            args = ["--require-layout", "--layout-profile=es-dark-extra"]
+            for page in plan["focused_pages"]:
+                (destination / f"visual-l128-focused-es-dark-extra-{page}_0_ID__exported.png").touch()
+            COLLECTOR.require_named_pages(destination, args)
+            with self.assertRaisesRegex(SystemExit, "supported --layout-profile"):
+                COLLECTOR.require_named_pages(destination, ["--require-layout", "--layout-profile=unsupported"])
+            (destination / 'visual-l128-focused-es-dark-extra-37-video_0_ID__exported.png').unlink()
+            with self.assertRaisesRegex(SystemExit, "37-video"):
+                COLLECTOR.require_named_pages(destination, args)
 
     def test_full_completeness_still_rejects_partial_matrix(self):
         with self.assertRaisesRegex(SystemExit, "requires 476 actual"):
@@ -99,7 +141,7 @@ class VisualEvidenceTests(unittest.TestCase):
 
 class ValidationStageTests(unittest.TestCase):
     """Execute the real Bash orchestration; stubs model tools, not App/UI results."""
-    def scenario(self, scope, fail_quick=False):
+    def scenario(self, scope, fail_quick=False, profile="fr-dark-extra"):
         workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
         step = workflow.split("      - name: Run targeted navigation then requested acceptance suite\n", 1)[1]
         step = step.split("      - name:", 1)[0].split("        run: |\n", 1)[1]
@@ -133,7 +175,7 @@ elif name=='xcodebuild':
             env = {**os.environ, "PATH": str(binaries) + os.pathsep + os.environ["PATH"],
                    "RUNNER_TEMP": str(root), "GITHUB_STEP_SUMMARY": str(root / "summary.txt"),
                    "VALIDATION_FLAVOR": "Release-TestFlight", "VALIDATION_SCOPE": scope,
-                   "COMMAND_LOG": str(log), "FAIL_QUICK": str(fail_quick).lower()}
+                   "COMMAND_LOG": str(log), "FAIL_QUICK": str(fail_quick).lower(), "LAYOUT_PROFILE": profile}
             result = subprocess.run(["/bin/bash", "-c", shell], cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
             commands = [json.loads(line) for line in log.read_text().splitlines()]
             return result, commands
@@ -166,6 +208,32 @@ elif name=='xcodebuild':
         self.assertIn("900", builds[1])
         destinations = [args[args.index("-destination") + 1] for args in builds]
         self.assertNotEqual(destinations[0], destinations[1])
+
+
+    def test_layout_scope_builds_only_selected_profile_and_units(self):
+        result, commands = self.scenario("layout", profile="es-dark-extra")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        builds = [args for name, args in commands if name == "xcodebuild"]
+        self.assertEqual(len(builds), 1)
+        self.assertIn("test", builds[0])
+        self.assertIn("-only-testing:ChaiPhotoTests", builds[0])
+        self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testLayout04esDarkLarge", builds[0])
+        self.assertNotIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick", builds[0])
+
+    def test_focused_preserves_smoke_and_missing_profile_without_repeating_all_matrix_profiles(self):
+        result, commands = self.scenario("focused")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        builds = [args for name, args in commands if name == "xcodebuild"]
+        self.assertEqual(len(builds), 2)
+        self.assertIn("test-without-building", builds[1])
+        self.assertIn("-only-testing:ChaiPhotoTests", builds[1])
+        self.assertIn("-only-testing:ChaiPhotoUITests/LaunchFlowTests", builds[1])
+        matrix = [x for x in builds[1] if "/testMatrix" in x]
+        layouts = [x for x in builds[1] if "/testLayout" in x]
+        self.assertEqual(matrix, ["-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testMatrix05frDarkLarge"])
+        self.assertEqual(len(layouts), 12)
+        self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testManualLanguageChangePreservesPendingItemsAndCurrentPhoto", builds[0])
+        self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testDiagnosticsPresentationQuick", builds[0])
 
 
 class AdditionalVisualEvidenceTests(unittest.TestCase):
@@ -236,6 +304,11 @@ class AdditionalVisualEvidenceTests(unittest.TestCase):
         self.assertEqual(len(profiles), 12)
         self.assertEqual(set(profiles), {(language, p["appearance"], p["textSize"])
                                         for language in plan["languages"] for p in plan["profiles"]})
+        focused = re.findall(r'func testLayout\w+\(\) \{ runLayoutProfile\(code: "([^"]+)", theme: "([^"]+)", size: "([^"]+)"\)', source)
+        self.assertEqual(len(focused), 12)
+        self.assertEqual(set(focused), set(profiles))
+        body = source.split("    private func runLayoutProfile(", 1)[1].split("    func testManualLanguageChange", 1)[0]
+        self.assertEqual(set(re.findall(r'"(\d\d-[a-z-]+)"', body)), set(plan["focused_pages"]))
 
 
 if __name__ == "__main__":

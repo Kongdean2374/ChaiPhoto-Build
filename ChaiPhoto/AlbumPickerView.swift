@@ -35,6 +35,14 @@ struct AlbumPickerView: View {
         NavigationStack {
             List {
                 Section {
+                    Text(L("加入相簿", "Add to Albums"))
+                        .font(.title2.bold())
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("album-picker-title")
+                }
+                .listRowBackground(Color.clear)
+                Section {
                     Text(L(
                         "可同時勾選多個相簿。只有按「完成」後才會一次套用變更。",
                         "Select multiple albums. Changes are applied together only after tapping Done."
@@ -93,7 +101,9 @@ struct AlbumPickerView: View {
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: L("搜尋相簿", "Search albums")
             )
-            .navigationTitle(L("加入相簿", "Add to Albums"))
+            // The full heading has its own wrapping row; Cancel/plus/Done no
+            // longer squeeze it into the fixed-height inline toolbar.
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

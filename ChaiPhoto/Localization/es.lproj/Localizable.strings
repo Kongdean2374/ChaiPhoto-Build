@@ -124,7 +124,7 @@
 "Favorite videos || 喜好影片" = "Vídeos favoritos";
 "Favorite videos || 喜愛影片" = "Vídeos favoritos";
 "Favorite || 收藏" = "Favorito";
-"Feedback & updates || 回報與更新" = "Comentarios y actualizaciones";
+"Feedback & updates || 回報與更新" = "Ayuda y novedades";
 "File || 檔案" = "Archivo";
 "Filter history || 篩選紀錄" = "Filtrar historial";
 "Filter || 篩選" = "Filtrar";
@@ -268,11 +268,11 @@
 "Slow motion || 慢動作" = "Cámara lenta";
 "Some items are unavailable or no longer authorized. Please review again. || 有照片已不存在或目前無權存取，請重新確認。" = "Algunos elementos no están disponibles o ya no tienen permiso. Revísalos de nuevo.";
 "Some resources are unavailable; total size is unknown. || 部分資源不可讀取；完整大小未知。" = "Algunos datos no están disponibles; se desconoce el tamaño total.";
-"Sort filters || 整理篩選" = "Filtros de organización";
+"Sort filters || 整理篩選" = "Filtros";
 "Sort with confidence || 放心整理" = "Organiza con confianza";
 "Sort || 整理" = "Organizar";
 "Sorting & controls || 整理與操作" = "Organización y controles";
-"Sorting actions || 整理操作" = "Acciones de organización";
+"Sorting actions || 整理操作" = "Decisiones";
 "Sorting || 整理操作" = "Organización";
 "Sound || 聲音" = "Sonido";
 "Source || 主分類" = "Contenido";

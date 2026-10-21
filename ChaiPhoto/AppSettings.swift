@@ -407,7 +407,10 @@ struct SettingsView: View {
                                 L("複製系統資訊", "Copy system information"),
                                 systemImage: "doc.on.doc"
                             )
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                         }.accessibilityIdentifier("diagnostics-copy")
+                            .buttonStyle(.borderless)
 
                         Text(L(
                             "系統資訊只會在你確認後複製到剪貼簿，不會自動傳送到回報網站。",
@@ -486,7 +489,10 @@ struct SettingsView: View {
                                 L("複製系統資訊", "Copy system information"),
                                 systemImage: "doc.on.doc"
                             )
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                         }.accessibilityIdentifier("diagnostics-copy")
+                            .buttonStyle(.borderless)
 
                         Text(L(
                             "系統資訊只會在你確認後複製到剪貼簿，不會自動傳送到回報網站。",
