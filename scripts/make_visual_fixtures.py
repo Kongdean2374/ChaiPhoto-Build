@@ -1,4 +1,4 @@
-"""Generate six synthetic PNGs for an isolated CI simulator; no user media or downloads."""
+"""Generate ten synthetic PNGs for an isolated CI simulator; no user media or downloads."""
 from pathlib import Path
 import struct
 import sys
@@ -10,7 +10,7 @@ out.mkdir(parents=True, exist_ok=True)
 def chunk(name, data):
     return struct.pack('>I', len(data)) + name + data + struct.pack('>I', zlib.crc32(name + data) & 0xffffffff)
 
-for index in range(6):
+for index in range(10):
     width, height = ((900, 1200) if index % 2 else (1200, 900))
     rows = bytearray()
     for y in range(height):
@@ -32,4 +32,4 @@ for index in range(6):
     data += chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
     data += chunk(b'IDAT', zlib.compress(rows, 6)) + chunk(b'IEND', b'')
     (out / f'visual-fixture-{index}.png').write_bytes(data)
-print('Generated 6 synthetic images; no personal data')
+print('Generated 10 synthetic images; no personal data')

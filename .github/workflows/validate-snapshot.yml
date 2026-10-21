@@ -1,4 +1,5 @@
 name: Validate Reviewed Snapshot
+run-name: Validate ${{ inputs.validation_scope }} ${{ inputs.expected_sha }}
 on:
   workflow_dispatch:
     inputs:
@@ -6,6 +7,12 @@ on:
         description: Exact approved public main commit SHA (40 hex characters)
         required: true
         type: string
+      validation_scope:
+        description: Run quick navigation reproduction first; full also runs every acceptance test
+        required: true
+        default: quick
+        type: choice
+        options: [quick, full]
 permissions:
   contents: read
 concurrency:
@@ -21,10 +28,11 @@ jobs:
       max-parallel: 2
       matrix:
         flavor: [Release-TestFlight, Release-AppStore]
-    timeout-minutes: 120
+    timeout-minutes: ${{ inputs.validation_scope == 'quick' && 25 || 120 }}
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       VALIDATION_FLAVOR: ${{ matrix.flavor }}
+      VALIDATION_SCOPE: ${{ inputs.validation_scope }}
     steps:
       - name: Checkout exact dispatched public source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,6 +62,7 @@ jobs:
             plutil -lint "$localization/Localizable.strings" "$localization/Localizable.stringsdict" "$localization/InfoPlist.strings"
           done
       - name: Compile assigned unsigned iPhoneOS flavor
+        if: inputs.validation_scope == 'full'
         shell: bash
         run: |
           set -euo pipefail
@@ -65,36 +74,64 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/device-$config" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
           echo "iPhoneOS $config: PASS" >> "$GITHUB_STEP_SUMMARY"
-      - name: Run XCTest and lifecycle UI tests for assigned flavor
+      - name: Run targeted navigation then requested acceptance suite
         shell: bash
         run: |
           set -euo pipefail
+          case "$VALIDATION_SCOPE" in quick|full) ;; *) echo 'Unsupported validation scope'; exit 1 ;; esac
           xcodegen generate --spec project-tests.yml
           RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["name"].startswith("iOS")))')
           python3 scripts/make_visual_fixtures.py "$RUNNER_TEMP/visual-fixtures"
           swift scripts/make_visual_video.swift "$RUNNER_TEMP/visual-fixtures/visual-video.mov"
-          status=0
           DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; print(next(d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == "iPhone SE (3rd generation)"))')
-          for config in "$VALIDATION_FLAVOR"; do
-            # Each flavor gets its own Photos permission and onboarding state.
-            DEVICE_ID=$(xcrun simctl create "ChaiPhoto Visual Review $config" "$DEVICE_TYPE" "$RUNTIME_ID")
+          config="$VALIDATION_FLAVOR"
+          DEVICE_ID=''
+          cleanup() {
+            if test -n "$DEVICE_ID"; then xcrun simctl shutdown "$DEVICE_ID" >/dev/null 2>&1 || true; fi
+          }
+          trap cleanup EXIT
+          boot_fixture() {
+            DEVICE_ID=$(xcrun simctl create "ChaiPhoto $config $1" "$DEVICE_TYPE" "$RUNTIME_ID")
             xcrun simctl boot "$DEVICE_ID"
             xcrun simctl bootstatus "$DEVICE_ID" -b
             xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP"/visual-fixtures/*.png "$RUNNER_TEMP"/visual-fixtures/*.mov
+          }
+          boot_fixture quick
+          if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
+            -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
+            -resultBundlePath "$RUNNER_TEMP/quick-$config.xcresult" \
+            -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 480 \
+            -maximum-test-execution-time-allowance 480 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test; then
+            echo "Targeted navigation $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Targeted navigation $config: FAIL; full matrix not started" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          cleanup
+          DEVICE_ID=''
+          if test "$VALIDATION_SCOPE" = full; then
+            # The full suite needs a fresh Photos/onboarding state. Reuse compiled
+            # test products, not the quick test's simulator or saved choices.
+            boot_fixture full
             if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhotoValidation \
               -configuration "$config" -destination "platform=iOS Simulator,id=$DEVICE_ID" \
               -derivedDataPath "$RUNNER_TEMP/simulator-$config" \
               -resultBundlePath "$RUNNER_TEMP/test-$config.xcresult" \
-              -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
-              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test; then
-              echo "XCTest + lifecycle UI $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+              -skip-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick \
+              -test-timeouts-enabled YES -default-test-execution-time-allowance 900 \
+              -maximum-test-execution-time-allowance 900 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' test-without-building; then
+              echo "Full XCTest + 12 visual profiles $config: PASS" >> "$GITHUB_STEP_SUMMARY"
             else
-              status=1
-              echo "XCTest + lifecycle UI $config: FAIL" >> "$GITHUB_STEP_SUMMARY"
+              echo "Full XCTest + 12 visual profiles $config: FAIL" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
             fi
-            xcrun simctl shutdown "$DEVICE_ID"
-          done
-          exit "$status"
+          else
+            echo "Full visual acceptance: NOT RUN (quick scope)" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Export actual simulator screenshot attachments
         if: always()
         shell: bash
@@ -104,6 +141,16 @@ jobs:
           set -euo pipefail
           status=0
           for config in "$VALIDATION_FLAVOR"; do
+            quick_bundle="$RUNNER_TEMP/quick-$config.xcresult"
+            if test -d "$quick_bundle"; then
+              if test "$TESTS_SUCCEEDED" = true; then
+                if ! python3 scripts/collect_visual_review.py "$quick_bundle" "$RUNNER_TEMP/visual-review/$config/quick" --require-quick; then status=1; fi
+              elif ! python3 scripts/collect_visual_review.py "$quick_bundle" "$RUNNER_TEMP/visual-review/$config/quick"; then
+                status=1
+              fi
+            elif test "$TESTS_SUCCEEDED" = true; then
+              status=1
+            fi
             bundle="$RUNNER_TEMP/test-$config.xcresult"
             if test -d "$bundle"; then
               if test "$TESTS_SUCCEEDED" = true; then
@@ -111,7 +158,7 @@ jobs:
               elif ! python3 scripts/collect_visual_review.py "$bundle" "$RUNNER_TEMP/visual-review/$config"; then
                 status=1
               fi
-            elif test "$TESTS_SUCCEEDED" = true; then
+            elif test "$TESTS_SUCCEEDED" = true && test "$VALIDATION_SCOPE" = full; then
               status=1
             fi
           done
@@ -126,6 +173,10 @@ jobs:
             ${{ runner.temp }}/visual-review/Release-TestFlight/*.jpg
             ${{ runner.temp }}/visual-review/Release-AppStore/*.png
             ${{ runner.temp }}/visual-review/Release-AppStore/*.jpg
+            ${{ runner.temp }}/visual-review/Release-TestFlight/quick/*.png
+            ${{ runner.temp }}/visual-review/Release-TestFlight/quick/*.jpg
+            ${{ runner.temp }}/visual-review/Release-AppStore/quick/*.png
+            ${{ runner.temp }}/visual-review/Release-AppStore/quick/*.jpg
           if-no-files-found: warn
           retention-days: 3
           compression-level: 0

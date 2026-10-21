@@ -4,6 +4,8 @@ import XCTest
 /// cloud downloads, deletion of originals, or production-only test bypasses.
 final class LocalizationFlowTests: XCTestCase {
     private var photosMonitor: NSObjectProtocol?
+    private var activeProfile = "setup"
+    private var activeStep = "launch"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -33,6 +35,16 @@ final class LocalizationFlowTests: XCTestCase {
             XCTAssertTrue(element(app, "photo-access-full").waitForExistence(timeout: 10))
             for _ in 0..<3 { if element(app, "guide-next").exists { tap(app, "guide-next") } }
         }
+        // Separate profile tests may follow a failed profile with pending marks.
+        // Restore only this isolated simulator's marks through the real Review UI.
+        // Do not erase defaults, bypass Photos, or reset production state.
+        if app.tabBars.firstMatch.exists {
+            tab(app, 1)
+            if element(app, "review-restore-selected").exists {
+                tap(app, "review-restore-selected", scroll: true)
+            }
+            tab(app, 0)
+        }
         XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 12), "Real Photos media and permission are required; do not depend on test order")
         app.terminate()
     }
@@ -42,9 +54,10 @@ final class LocalizationFlowTests: XCTestCase {
     }
 
     override func record(_ issue: XCTIssue) {
-        print("Localization UI failure: \(issue.compactDescription)")
+        print("Localization UI failure [\(activeProfile), \(activeStep)]: \(issue.compactDescription)")
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        attachment.name = "visual-l128-failure"
+        attachment.name = ("visual-l128-failure-" + activeProfile + "-" + activeStep)
+            .replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "-", options: .regularExpression)
         attachment.lifetime = .keepAlways
         add(attachment)
         super.record(issue)
@@ -58,6 +71,13 @@ final class LocalizationFlowTests: XCTestCase {
 
     private func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
+    private func control(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        // Prefer the actual control instead of a broad Any query that can pick
+        // an inherited identifier on a label/image or an old presentation tree.
+        let button = app.buttons.matching(identifier: id).firstMatch
+        return button.exists ? button : element(app, id)
     }
 
     private func scrollPage(_ app: XCUIApplication, up: Bool = true) {
@@ -89,8 +109,10 @@ final class LocalizationFlowTests: XCTestCase {
         return String(label[range])
     }
 
-    private func tap(_ app: XCUIApplication, _ id: String, scroll: Bool = false) {
-        var target = element(app, id)
+    private func tap(_ app: XCUIApplication, _ id: String, scroll: Bool = false,
+                     file: StaticString = #filePath, line: UInt = #line) {
+        activeStep = "tap-" + id
+        var target = control(app, id)
         if ["review-cancel-delete", "diagnostics-cancel", "album-new-cancel"].contains(id), !target.exists {
             // UIKit-backed alert actions may omit SwiftUI identifiers. Restrict
             // fallback to the real alert's exact translated Cancel action.
@@ -104,18 +126,32 @@ final class LocalizationFlowTests: XCTestCase {
                 scrollPage(app)
             }
         }
-        XCTAssertTrue(target.waitForExistence(timeout: 8), id)
-        waitUntilHittable(target, "Must remain reachable at the real screen size: " + id)
+        XCTAssertTrue(target.waitForExistence(timeout: 8), id, file: file, line: line)
+        waitUntilHittable(target, "Must remain reachable at the real screen size: " + id, file: file, line: line)
         target.tap()
+        let returningTo = ["media-preview-close": "photo-information", "media-info-close": "photo-information",
+                           "album-picker-cancel": "photo-information", "album-new-cancel": "album-picker-new",
+                           "filter-cancel": "sort-filters", "history-filter-done": "history-filter",
+                           "review-cancel-delete": "review-delete-selected", "diagnostics-cancel": "diagnostics-copy",
+                           "summary-done": "sort-summary-button"]
+        if let destination = returningTo[id] {
+            activeStep = "return-from-" + id
+            XCTAssertTrue(element(app, id).waitForNonExistence(timeout: 10),
+                          "The preceding surface must actually close: " + id, file: file, line: line)
+            waitUntilHittable(control(app, destination), "Return destination must be usable: " + destination,
+                             file: file, line: line)
+        }
     }
 
-    private func waitUntilHittable(_ target: XCUIElement, _ message: String) {
-        // A dismissed sheet may still be finishing its transition when XCTest
-        // becomes idle. Wait for real reachability, never tap through a modal.
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            target.exists && target.isHittable
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, message)
+    private func waitUntilHittable(_ target: XCUIElement, _ message: String,
+                                   file: StaticString = #filePath, line: UInt = #line) {
+        // Use XCTest's native single-property wait rather than synchronous AX
+        // lookups inside a generic predicate's five-second polling budget.
+        let ready = target.wait(for: \.isHittable, toEqual: true, timeout: 10)
+        if !ready {
+            print("Unreachable control [\(activeProfile), \(activeStep)]: type=\(target.elementType.rawValue), frame=\(target.frame), enabled=\(target.isEnabled)")
+        }
+        XCTAssertTrue(ready, message, file: file, line: line)
     }
 
     private func tab(_ app: XCUIApplication, _ index: Int) {
@@ -133,212 +169,225 @@ final class LocalizationFlowTests: XCTestCase {
     }
 
     private func capture(_ app: XCUIApplication, _ prefix: String, _ page: String) {
+        activeStep = page
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "visual-l128-" + prefix + "-" + page
         attachment.lifetime = .keepAlways
         add(attachment)
     }
 
-    func testSixLanguagesOnNarrowScreenLightAndDarkLargeText() {
+    func testMatrix00zhHantLight() { runProfile(code: "zh-Hant", theme: "light", size: "standard") }
+    func testMatrix00zhHantDarkLarge() { runProfile(code: "zh-Hant", theme: "dark", size: "extra") }
+    func testMatrix01zhHansLight() { runProfile(code: "zh-Hans", theme: "light", size: "standard") }
+    func testMatrix01zhHansDarkLarge() { runProfile(code: "zh-Hans", theme: "dark", size: "extra") }
+    func testMatrix02enLight() { runProfile(code: "en", theme: "light", size: "standard") }
+    func testMatrix02enDarkLarge() { runProfile(code: "en", theme: "dark", size: "extra") }
+    func testMatrix03jaLight() { runProfile(code: "ja", theme: "light", size: "standard") }
+    func testMatrix03jaDarkLarge() { runProfile(code: "ja", theme: "dark", size: "extra") }
+    func testMatrix04esLight() { runProfile(code: "es", theme: "light", size: "standard") }
+    func testMatrix04esDarkLarge() { runProfile(code: "es", theme: "dark", size: "extra") }
+    func testMatrix05frLight() { runProfile(code: "fr", theme: "light", size: "standard") }
+    func testMatrix05frDarkLarge() { runProfile(code: "fr", theme: "dark", size: "extra") }
+    
+    private func runProfile(code: String, theme: String, size: String) {
+        executionTimeAllowance = 900
         continueAfterFailure = false
+        guard let language = languages.first(where: { $0.code == code }) else {
+            XCTFail("Unsupported matrix profile: " + code)
+            return
+        }
+        activeProfile = code + "-" + theme + "-" + size
         let app = XCUIApplication()
-        for language in languages {
-            for (theme, size) in [("light", "standard"), ("dark", "extra")] {
-                XCTContext.runActivity(named: language.code + "-" + theme + "-" + size) { _ in
-                    let prefix = language.code + "-" + theme + "-" + size
-                    // Public UserDefaults launch overrides exercise the real initial
-                    // language confirmation UI without clearing saved sorting data.
-                    app.launchArguments = ["-language", "", "-AppleLanguages", "(\(language.code))",
-                        "-onboarding.v2.completed", "NO", "-onboarding.v2.page", "0",
-                        "-appearance", theme, "-textSize", size, "-preload.mode.v3", "off",
-                        "-autoplay", "NO", "-autoEstimate", "NO"]
-                    app.launch()
-                    XCTAssertLessThanOrEqual(app.frame.width, 375, "This matrix must really run on the narrow simulator")
-                    XCTAssertTrue(element(app, "confirm-app-language").waitForExistence(timeout: 10))
-                    assertInitialLanguage(app, name: language.name)
-                    capture(app, prefix, "01-language")
-                    scrollPage(app); scrollPage(app)
-                    assertInitialLanguage(app, name: language.name)
-                    capture(app, prefix, "39-language-bottom")
-                    tap(app, "confirm-app-language")
-                    XCTAssertTrue(element(app, "photo-access-full").waitForExistence(timeout: 10),
-                                  "Real Photos authorization must survive; never replace it with a fake empty screen")
-                    capture(app, prefix, "02-guide-access")
-                    tap(app, "guide-next")
-                    capture(app, prefix, "03-guide-general")
-                    scrollPage(app); scrollPage(app)
-                    capture(app, prefix, "04-guide-general-bottom")
-                    tap(app, "guide-next")
-                    scrollPage(app, up: false); scrollPage(app, up: false)
-                    capture(app, prefix, "05-guide-safety")
-                    tap(app, "guide-next")
-                    XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 12), "A real synthetic photo must render")
-                    XCTAssertTrue(element(app, "rendered-media-image").waitForExistence(timeout: 10), "A loaded Photos image must be visible, not only the action controls")
-                    XCTAssertGreaterThan(element(app, "rendered-media-image").frame.height, 44)
-                    XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
-                    capture(app, prefix, "06-sort")
-                    element(app, "rendered-media-image").tap()
-                    XCTAssertTrue(element(app, "media-preview-close").waitForExistence(timeout: 5))
-                    capture(app, prefix, "35-photo-preview")
-                    tap(app, "media-preview-close")
+        defer { app.terminate() }
+        XCTContext.runActivity(named: activeProfile) { _ in
+            let prefix = language.code + "-" + theme + "-" + size
+            // Public UserDefaults launch overrides exercise the real initial
+            // language confirmation UI without clearing saved sorting data.
+            app.launchArguments = ["-language", "", "-AppleLanguages", "(\(language.code))",
+                "-onboarding.v2.completed", "NO", "-onboarding.v2.page", "0",
+                "-appearance", theme, "-textSize", size, "-preload.mode.v3", "off",
+                "-autoplay", "NO", "-autoEstimate", "NO"]
+            app.launch()
+            XCTAssertLessThanOrEqual(app.frame.width, 375, "This matrix must really run on the narrow simulator")
+            XCTAssertTrue(element(app, "confirm-app-language").waitForExistence(timeout: 10))
+            assertInitialLanguage(app, name: language.name)
+            capture(app, prefix, "01-language")
+            scrollPage(app); scrollPage(app)
+            assertInitialLanguage(app, name: language.name)
+            capture(app, prefix, "39-language-bottom")
+            tap(app, "confirm-app-language")
+            XCTAssertTrue(element(app, "photo-access-full").waitForExistence(timeout: 10),
+                          "Real Photos authorization must survive; never replace it with a fake empty screen")
+            capture(app, prefix, "02-guide-access")
+            tap(app, "guide-next")
+            capture(app, prefix, "03-guide-general")
+            scrollPage(app); scrollPage(app)
+            capture(app, prefix, "04-guide-general-bottom")
+            tap(app, "guide-next")
+            scrollPage(app, up: false); scrollPage(app, up: false)
+            capture(app, prefix, "05-guide-safety")
+            tap(app, "guide-next")
+            XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 12), "A real synthetic photo must render")
+            XCTAssertTrue(element(app, "rendered-media-image").waitForExistence(timeout: 10), "A loaded Photos image must be visible, not only the action controls")
+            XCTAssertGreaterThan(element(app, "rendered-media-image").frame.height, 44)
+            XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
+            capture(app, prefix, "06-sort")
+            element(app, "rendered-media-image").tap()
+            XCTAssertTrue(element(app, "media-preview-close").waitForExistence(timeout: 5))
+            capture(app, prefix, "35-photo-preview")
+            tap(app, "media-preview-close")
 
-                    tap(app, "photo-information")
-                    capture(app, prefix, "07-media-information")
-                    scrollPage(app); capture(app, prefix, "08-media-information-bottom")
-                    tap(app, "media-info-close")
+            tap(app, "photo-information")
+            capture(app, prefix, "07-media-information")
+            scrollPage(app); capture(app, prefix, "08-media-information-bottom")
+            tap(app, "media-info-close")
 
-                    element(app, "rendered-media-image").swipeUp()
-                    XCTAssertTrue(element(app, "album-picker-cancel").waitForExistence(timeout: 5))
-                    capture(app, prefix, "30-album-picker")
-                    tap(app, "album-picker-new")
-                    capture(app, prefix, "31-new-album")
-                    tap(app, "album-new-cancel")
-                    tap(app, "album-picker-cancel")
+            element(app, "rendered-media-image").swipeUp()
+            XCTAssertTrue(element(app, "album-picker-cancel").waitForExistence(timeout: 5))
+            capture(app, prefix, "30-album-picker")
+            tap(app, "album-picker-new")
+            capture(app, prefix, "31-new-album")
+            tap(app, "album-new-cancel")
+            tap(app, "album-picker-cancel")
 
-                    tap(app, "sort-filters")
-                    capture(app, prefix, "09-filters")
-                    for (source, page) in [("photos", "10-photo-types"), ("videos", "11-video-types"), ("album", "12-albums")] {
-                        tap(app, "filter-source-" + source)
-                        capture(app, prefix, page)
-                        back(app)
-                    }
-                    tap(app, "filter-cancel")
-
-                    tap(app, "sort-filters")
-                    tap(app, "filter-source-videos")
-                    tap(app, "filter-kind-all")
-                    capture(app, prefix, "36-video-entry")
-                    XCTAssertTrue(element(app, "video-ready").waitForExistence(timeout: 15), "The real local video must become ready")
-                    let poster = element(app, "video-poster")
-                    XCTAssertTrue(poster.waitForExistence(timeout: 10), "A real Photos video poster is required")
-                    capture(app, prefix, "37-video")
-                    poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-                    let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element(app, "video-ready"))
-                    XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 5), .completed)
-                    XCUIDevice.shared.press(.home); app.activate()
-                    XCTAssertTrue(element(app, "video-ready").waitForExistence(timeout: 5), "Foregrounding must leave playback paused")
-                    capture(app, prefix, "38-video-foreground-paused")
-                    tap(app, "sort-filters")
-                    tap(app, "filter-source-photos")
-                    tap(app, "filter-kind-all")
-
-                    // Verify real decisions, not just navigation or button presence.
-                    for _ in 0..<2 {
-                        let remaining = element(app, "sort-remaining")
-                        let before = Int(remaining.label.replacingOccurrences(of: ",", with: "")) ?? 0
-                        XCTAssertGreaterThan(before, 1)
-                        tap(app, "photo-mark-delete")
-                        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", String(before - 1)), object: remaining)
-                        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
-                    }
-                    tab(app, 1)
-                    capture(app, prefix, "13-review")
-                    let delete = element(app, "review-delete-selected")
-                    for _ in 0..<8 { if delete.isHittable { break }; scrollPage(app) }
-                    for id in ["review-delete-selected", "review-restore-selected"] {
-                        let button = element(app, id)
-                        XCTAssertTrue(button.isHittable, id)
-                        XCTAssertGreaterThanOrEqual(button.frame.height, 44, id)
-                        XCTAssertFalse(button.label.contains("…"), id)
-                    }
-                    scrollPage(app)
-                    capture(app, prefix, "14-review-bottom")
-                    tap(app, "review-delete-selected", scroll: true)
-                    XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
-                    capture(app, prefix, "15-deletion-safety")
-                    // Never tap Continue deleting: these tests make no system deletions.
-                    tap(app, "review-cancel-delete")
-
-                    tab(app, 2)
-                    capture(app, prefix, "16-settings")
-                    for (category, page) in [("appearance", "17-appearance"), ("sorting", "18-controls"), ("media", "19-media"), ("support", "21-support")] {
-                        tap(app, "settings-" + category, scroll: true)
-                        capture(app, prefix, page)
-                        if category == "appearance" {
-                            XCTAssertEqual(element(app, "app-language-picker").value as? String, language.name)
-                        }
-                        if category == "media" {
-                            scrollPage(app); scrollPage(app)
-                            capture(app, prefix, "20-media-bottom")
-                        }
-                        if category == "support" {
-                            tap(app, "diagnostics-copy", scroll: true)
-                            capture(app, prefix, "22-diagnostics-safety")
-                            tap(app, "diagnostics-cancel")
-                        }
-                        back(app)
-                    }
-                    tap(app, "settings-information", scroll: true)
-                    capture(app, prefix, "23-information")
-                    tap(app, "information-gestures", scroll: true)
-                    capture(app, prefix, "24-gestures")
-                    scrollPage(app); scrollPage(app)
-                    capture(app, prefix, "25-gestures-bottom")
-                    back(app)
-                    tap(app, "information-history", scroll: true)
-                    tap(app, "history-sorting")
-                    capture(app, prefix, "26-history")
-                    tap(app, "history-filter")
-                    capture(app, prefix, "27-history-filter")
-                    tap(app, "history-filter-done")
-                    tab(app, 1)
-                    tap(app, "review-restore-selected", scroll: true)
-                    capture(app, prefix, "28-review-empty")
-                    tab(app, 0)
-                    XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 8), "Restore must return the real photo to sorting")
-                    // Finish this real synthetic selection, inspect the real
-                    // completion summary, then restore it through Review.
-                    for _ in 0..<30 {
-                        if !app.buttons["photo-mark-delete"].exists { break }
-                        tap(app, "photo-mark-delete")
-                    }
-                    XCTAssertFalse(app.buttons["photo-mark-delete"].exists)
-                    // Finishing the real queue automatically presents Summary.
-                    // Inspect and dismiss that sheet before touching the covered
-                    // completion screen; then verify its manual reopen action too.
-                    XCTAssertTrue(element(app, "summary-done").waitForExistence(timeout: 8),
-                                  "Finishing the selection must present the actual summary")
-                    capture(app, prefix, "32-summary")
-                    tap(app, "summary-done", scroll: true)
-                    let summaryButton = element(app, "sort-summary-button")
-                    let summaryClosed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                        summaryButton.exists && summaryButton.isHittable
-                    }, object: nil)
-                    XCTAssertEqual(XCTWaiter.wait(for: [summaryClosed], timeout: 5), .completed,
-                                   "Closing Summary must expose the real completion action")
-                    capture(app, prefix, "33-sort-complete")
-                    tap(app, "sort-summary-button")
-                    XCTAssertTrue(element(app, "summary-done").waitForExistence(timeout: 8),
-                                  "View summary must reopen the actual summary")
-                    tap(app, "summary-done", scroll: true)
-                    tab(app, 1)
-                    tap(app, "review-restore-selected", scroll: true)
-                    tab(app, 0)
-                    tap(app, "sort-filters")
-                    tap(app, "filter-source-photos")
-                    tap(app, "filter-kind-screenshots")
-                    XCTAssertFalse(app.buttons["photo-mark-delete"].exists, "CI drawings are ordinary photos, not device screenshots")
-                    capture(app, prefix, "34-sort-empty")
-                    tap(app, "sort-filters")
-                    tap(app, "filter-source-photos")
-                    tap(app, "filter-kind-all")
-                    XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 8))
-                    app.terminate()
-
-                    // A different OS preference must not override the confirmed
-                    // in-app language after termination or backgrounding.
-                    app.launchArguments = ["-AppleLanguages", "(de-DE,en)", "-appearance", theme,
-                        "-textSize", size, "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
-                    app.launch()
-                    XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 10))
-                    XCTAssertFalse(element(app, "confirm-app-language").exists)
-                    XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
-                    XCUIDevice.shared.press(.home); app.activate()
-                    XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
-                    capture(app, prefix, "29-relaunch-language-locked")
-                    app.terminate()
-                }
+            tap(app, "sort-filters")
+            capture(app, prefix, "09-filters")
+            for (source, page) in [("photos", "10-photo-types"), ("videos", "11-video-types"), ("album", "12-albums")] {
+                tap(app, "filter-source-" + source)
+                capture(app, prefix, page)
+                back(app)
             }
+            tap(app, "filter-cancel")
+
+            tap(app, "sort-filters")
+            tap(app, "filter-source-videos")
+            tap(app, "filter-kind-all")
+            capture(app, prefix, "36-video-entry")
+            XCTAssertTrue(element(app, "video-ready").waitForExistence(timeout: 15), "The real local video must become ready")
+            let poster = element(app, "video-poster")
+            XCTAssertTrue(poster.waitForExistence(timeout: 10), "A real Photos video poster is required")
+            capture(app, prefix, "37-video")
+            poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element(app, "video-ready"))
+            XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 5), .completed)
+            XCUIDevice.shared.press(.home); app.activate()
+            XCTAssertTrue(element(app, "video-ready").waitForExistence(timeout: 5), "Foregrounding must leave playback paused")
+            capture(app, prefix, "38-video-foreground-paused")
+            tap(app, "sort-filters")
+            tap(app, "filter-source-photos")
+            tap(app, "filter-kind-all")
+
+            // Verify real decisions, not just navigation or button presence.
+            for _ in 0..<2 {
+                let remaining = element(app, "sort-remaining")
+                let before = Int(remaining.label.replacingOccurrences(of: ",", with: "")) ?? 0
+                XCTAssertGreaterThan(before, 1)
+                tap(app, "photo-mark-delete")
+                XCTAssertTrue(remaining.wait(for: \.label, toEqual: String(before - 1), timeout: 8),
+                              "Each actual decision must decrement the displayed count")
+            }
+            tab(app, 1)
+            capture(app, prefix, "13-review")
+            let delete = element(app, "review-delete-selected")
+            for _ in 0..<8 { if delete.isHittable { break }; scrollPage(app) }
+            for id in ["review-delete-selected", "review-restore-selected"] {
+                let button = element(app, id)
+                XCTAssertTrue(button.isHittable, id)
+                XCTAssertGreaterThanOrEqual(button.frame.height, 44, id)
+                XCTAssertFalse(button.label.contains("…"), id)
+            }
+            scrollPage(app)
+            capture(app, prefix, "14-review-bottom")
+            tap(app, "review-delete-selected", scroll: true)
+            XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+            capture(app, prefix, "15-deletion-safety")
+            // Never tap Continue deleting: these tests make no system deletions.
+            tap(app, "review-cancel-delete")
+
+            tab(app, 2)
+            capture(app, prefix, "16-settings")
+            for (category, page) in [("appearance", "17-appearance"), ("sorting", "18-controls"), ("media", "19-media"), ("support", "21-support")] {
+                tap(app, "settings-" + category, scroll: true)
+                capture(app, prefix, page)
+                if category == "appearance" {
+                    XCTAssertEqual(element(app, "app-language-picker").value as? String, language.name)
+                }
+                if category == "media" {
+                    scrollPage(app); scrollPage(app)
+                    capture(app, prefix, "20-media-bottom")
+                }
+                if category == "support" {
+                    tap(app, "diagnostics-copy", scroll: true)
+                    capture(app, prefix, "22-diagnostics-safety")
+                    tap(app, "diagnostics-cancel")
+                }
+                back(app)
+            }
+            tap(app, "settings-information", scroll: true)
+            capture(app, prefix, "23-information")
+            tap(app, "information-gestures", scroll: true)
+            capture(app, prefix, "24-gestures")
+            scrollPage(app); scrollPage(app)
+            capture(app, prefix, "25-gestures-bottom")
+            back(app)
+            tap(app, "information-history", scroll: true)
+            tap(app, "history-sorting")
+            capture(app, prefix, "26-history")
+            tap(app, "history-filter")
+            capture(app, prefix, "27-history-filter")
+            tap(app, "history-filter-done")
+            tab(app, 1)
+            tap(app, "review-restore-selected", scroll: true)
+            capture(app, prefix, "28-review-empty")
+            tab(app, 0)
+            XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 8), "Restore must return the real photo to sorting")
+            // Finish this real synthetic selection, inspect the real
+            // completion summary, then restore it through Review.
+            for _ in 0..<30 {
+                if !app.buttons["photo-mark-delete"].exists { break }
+                tap(app, "photo-mark-delete")
+            }
+            XCTAssertFalse(app.buttons["photo-mark-delete"].exists)
+            // Finishing the real queue automatically presents Summary.
+            // Inspect and dismiss that sheet before touching the covered
+            // completion screen; then verify its manual reopen action too.
+            XCTAssertTrue(element(app, "summary-done").waitForExistence(timeout: 8),
+                          "Finishing the selection must present the actual summary")
+            capture(app, prefix, "32-summary")
+            tap(app, "summary-done", scroll: true)
+            waitUntilHittable(control(app, "sort-summary-button"),
+                              "Closing Summary must expose the real completion action")
+            capture(app, prefix, "33-sort-complete")
+            tap(app, "sort-summary-button")
+            XCTAssertTrue(element(app, "summary-done").waitForExistence(timeout: 8),
+                          "View summary must reopen the actual summary")
+            tap(app, "summary-done", scroll: true)
+            tab(app, 1)
+            tap(app, "review-restore-selected", scroll: true)
+            tab(app, 0)
+            tap(app, "sort-filters")
+            tap(app, "filter-source-photos")
+            tap(app, "filter-kind-screenshots")
+            XCTAssertFalse(app.buttons["photo-mark-delete"].exists, "CI drawings are ordinary photos, not device screenshots")
+            capture(app, prefix, "34-sort-empty")
+            tap(app, "sort-filters")
+            tap(app, "filter-source-photos")
+            tap(app, "filter-kind-all")
+            XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 8))
+            app.terminate()
+
+            // A different OS preference must not override the confirmed
+            // in-app language after termination or backgrounding.
+            app.launchArguments = ["-AppleLanguages", "(de-DE,en)", "-appearance", theme,
+                "-textSize", size, "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
+            app.launch()
+            XCTAssertTrue(app.buttons["photo-mark-delete"].waitForExistence(timeout: 10))
+            XCTAssertFalse(element(app, "confirm-app-language").exists)
+            XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
+            XCUIDevice.shared.press(.home); app.activate()
+            XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, language.sort)
+            capture(app, prefix, "29-relaunch-language-locked")
+            app.terminate()
         }
         // Leave the shared synthetic simulator in a concrete language understood
         // by the existing lifecycle tests; no sorting data is cleared.
@@ -346,7 +395,77 @@ final class LocalizationFlowTests: XCTestCase {
         app.launch(); app.terminate()
     }
 
+    /// One independently selectable reproduction of the three #17 failure paths.
+    /// Runs on real Photos and native controls, before any full visual matrix.
+    func testNavigationQuick() {
+        executionTimeAllowance = 480
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        func filename(title: String) -> String {
+            let prefix = title + ", "
+            let rows = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
+            XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(rows.count, 1, "Exactly one actual filename row is required")
+            return String(rows.firstMatch.label.dropFirst(prefix.count))
+        }
+        for (code, theme, size, title, chosen, newTitle, sortLabel) in [
+            ("zh-Hant", "light", "standard", "檔案", "Français", "Fichier", "Trier"),
+            ("fr", "light", "standard", "Fichier", "English", "File", "Sort")
+        ] {
+            activeProfile = "quick-" + code + "-" + theme
+            app.launchArguments = ["-language", code, "-appearance", theme, "-textSize", size,
+                                   "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]
+            app.launch()
+            let remaining = element(app, "sort-remaining")
+            XCTAssertTrue(remaining.waitForExistence(timeout: 10))
+            let baseline = remaining.label
+            tap(app, "photo-information")
+            let before = filename(title: title)
+            XCTAssertFalse(before.isEmpty)
+            tap(app, "media-info-close")
+            for round in 0..<2 {
+                let photo = element(app, "rendered-media-image")
+                XCTAssertTrue(photo.waitForExistence(timeout: 10))
+                XCTAssertGreaterThan(photo.frame.height, 44)
+                photo.tap()
+                XCTAssertTrue(element(app, "media-preview-close").waitForExistence(timeout: 8))
+                tap(app, "media-preview-close")
+                tap(app, "photo-information")
+                XCTAssertEqual(filename(title: title), before, "Preview round \(round) must keep the current photo")
+                capture(app, activeProfile, "preview-return-\(round)")
+                tap(app, "media-info-close")
+                XCTAssertEqual(remaining.label, baseline)
+            }
+            tab(app, 2)
+            tap(app, "settings-appearance", scroll: true)
+            tap(app, "app-language-picker", scroll: true)
+            let choice = app.buttons[chosen]
+            waitUntilHittable(choice, "The native language menu must be usable")
+            choice.tap()
+            tab(app, 0)
+            XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, sortLabel)
+            tap(app, "photo-information")
+            XCTAssertEqual(filename(title: newTitle), before, "Changing language must keep the current photo")
+            tap(app, "media-info-close")
+            let count = Int(baseline.replacingOccurrences(of: ",", with: "")) ?? 0
+            XCTAssertGreaterThan(count, 9, "The fresh CI fixture selection must exercise the ninth decision")
+            for offset in 1...9 {
+                tap(app, "photo-mark-delete")
+                XCTAssertTrue(remaining.wait(for: \.label, toEqual: String(count - offset), timeout: 8))
+            }
+            capture(app, activeProfile, "ninth-decision")
+            tab(app, 1)
+            tap(app, "review-restore-selected", scroll: true)
+            tab(app, 0)
+            XCTAssertTrue(remaining.wait(for: \.label, toEqual: baseline, timeout: 8),
+                          "Real Review restore must recover the original remaining count")
+            capture(app, activeProfile, "restored")
+            app.terminate()
+        }
+    }
+
     func testManualLanguageChangePreservesPendingItemsAndCurrentPhoto() {
+        executionTimeAllowance = 300
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-language", "en", "-preload.mode.v3", "off", "-autoplay", "NO", "-autoEstimate", "NO"]

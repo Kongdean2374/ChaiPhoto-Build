@@ -76,11 +76,16 @@ def collect(bundle, destination):
     return count
 
 
-if __name__ == "__main__":
-    bundle, destination = map(Path, sys.argv[1:3])
-    count = collect(bundle, destination)
-    if "--require-complete" in sys.argv[3:]:
+def require_screenshots(count, arguments):
+    if "--require-quick" in arguments and count < 8:
+        raise SystemExit(f"Quick navigation requires 8 actual screenshots per flavor; retained {count}")
+    if "--require-complete" in arguments:
         plan = json.loads((Path(__file__).resolve().parents[1] / "build/visual-pages.json").read_text())
         expected = plan["legacy_screenshots_per_flavor"] + len(plan["languages"]) * len(plan["profiles"]) * len(plan["pages"])
         if count < expected:
             raise SystemExit(f"Six-language visual review requires {expected} actual screenshots per flavor; retained {count}")
+
+
+if __name__ == "__main__":
+    bundle, destination = map(Path, sys.argv[1:3])
+    require_screenshots(collect(bundle, destination), sys.argv[3:])

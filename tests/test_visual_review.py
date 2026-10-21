@@ -16,7 +16,7 @@ SPEC.loader.exec_module(COLLECTOR)
 
 
 class VisualEvidenceTests(unittest.TestCase):
-    def export_step(self, succeeded, fail_first=False):
+    def export_step(self, succeeded, fail_first=False, scope="full"):
         workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
         step = workflow.split("      - name: Export actual simulator screenshot attachments\n", 1)[1]
         step = step.split("      - name:", 1)[0].split("        run: |\n", 1)[1]
@@ -25,7 +25,9 @@ class VisualEvidenceTests(unittest.TestCase):
             base = Path(directory)
             (base / "bin").mkdir()
             for flavor in ("Release-TestFlight", "Release-AppStore"):
-                (base / f"test-{flavor}.xcresult").mkdir()
+                (base / f"quick-{flavor}.xcresult").mkdir()
+                if scope == "full":
+                    (base / f"test-{flavor}.xcresult").mkdir()
             stub = base / "bin/python3"
             stub.write_text(f"#!{sys.executable}\n" +
                             "import json,os,sys\n" +
@@ -35,7 +37,7 @@ class VisualEvidenceTests(unittest.TestCase):
             log = base / "calls.jsonl"
             env = {**os.environ, "RUNNER_TEMP": str(base), "TESTS_SUCCEEDED": str(succeeded).lower(),
                    "PATH": str(base / "bin") + os.pathsep + os.environ["PATH"],
-                   "STUB_LOG": str(log), "FAIL_FIRST": str(fail_first).lower()}
+                   "STUB_LOG": str(log), "FAIL_FIRST": str(fail_first).lower(), "VALIDATION_SCOPE": scope}
             # /bin/bash is Bash 3.2 on the macOS runner. Exercise the failure branch,
             # which previously aborted on an empty array under nounset.
             # The workflow assigns each flavor its own runner. Execute the real
@@ -46,13 +48,28 @@ class VisualEvidenceTests(unittest.TestCase):
                                               env={**env, "VALIDATION_FLAVOR": flavor},
                                               capture_output=True, text=True))
             calls = [json.loads(line) for line in log.read_text().splitlines()]
-            self.assertEqual(len(calls), 2, "\n".join(r.stderr for r in results))
+            per_flavor = 2 if scope == "full" else 1
+            self.assertEqual(len(calls), 2 * per_flavor, "\n".join(r.stderr for r in results))
             self.assertIn("Release-TestFlight", calls[0][1])
-            self.assertIn("Release-AppStore", calls[1][1])
+            self.assertIn("Release-AppStore", calls[per_flavor][1])
             self.assertEqual([r.returncode for r in results], [int(fail_first), 0],
                              "\n".join(r.stderr for r in results))
             for call in calls:
-                self.assertEqual(call[3:], ["--require-complete"] if succeeded else [])
+                flag = "--require-quick" if "quick-Release" in call[1] else "--require-complete"
+                self.assertEqual(call[3:], [flag] if succeeded else [])
+
+    def test_quick_success_exports_quick_evidence_without_a_full_matrix_bundle(self):
+        self.export_step(True, scope="quick")
+
+    def test_quick_completeness_rejects_partial_images(self):
+        with self.assertRaisesRegex(SystemExit, "requires 8 actual"):
+            COLLECTOR.require_screenshots(7, ["--require-quick"])
+        COLLECTOR.require_screenshots(8, ["--require-quick"])
+
+    def test_full_completeness_still_rejects_partial_matrix(self):
+        with self.assertRaisesRegex(SystemExit, "requires 476 actual"):
+            COLLECTOR.require_screenshots(475, ["--require-complete"])
+        COLLECTOR.require_screenshots(476, ["--require-complete"])
 
     def test_failed_tests_still_export_both_flavors_without_optional_arguments(self):
         self.export_step(False)
@@ -78,6 +95,77 @@ class VisualEvidenceTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "screenshot export was still attempted"):
                     COLLECTOR.collect(base / "test.xcresult", output)
             self.assertEqual(sorted(p.name for p in output.iterdir()), ["jpeg.jpg", "screenshot.png"])
+
+
+class ValidationStageTests(unittest.TestCase):
+    """Execute the real Bash orchestration; stubs model tools, not App/UI results."""
+    def scenario(self, scope, fail_quick=False):
+        workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
+        step = workflow.split("      - name: Run targeted navigation then requested acceptance suite\n", 1)[1]
+        step = step.split("      - name:", 1)[0].split("        run: |\n", 1)[1]
+        shell = "\n".join(line[10:] for line in step.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binaries = root / "bin"
+            binaries.mkdir()
+            log = root / "commands.jsonl"
+            stub = f"#!{sys.executable}\n" + '''import json,os,pathlib,sys
+name=pathlib.Path(sys.argv[0]).name
+args=sys.argv[1:]
+with open(os.environ['COMMAND_LOG'],'a') as stream: stream.write(json.dumps([name,args])+'\\n')
+if name=='xcrun':
+    if args[:3]==['simctl','list','runtimes']:
+        print(json.dumps({'runtimes':[{'identifier':'ci-runtime','isAvailable':True,'name':'iOS CI'}]}))
+    elif args[:3]==['simctl','list','devicetypes']:
+        print(json.dumps({'devicetypes':[{'identifier':'ci-se','name':'iPhone SE (3rd generation)'}]}))
+    elif args[:2]==['simctl','create']:
+        print('quick-device' if 'quick' in args[2] else 'full-device')
+elif name=='swift':
+    pathlib.Path(args[-1]).write_bytes(b'CI orchestration fixture, not a playable movie')
+elif name=='xcodebuild':
+    if '-resultBundlePath' in args: pathlib.Path(args[args.index('-resultBundlePath')+1]).mkdir()
+    if os.environ['FAIL_QUICK']=='true' and any(a.startswith('-only-testing:') for a in args): sys.exit(65)
+'''
+            for name in ["xcrun", "xcodebuild", "swift", "xcodegen"]:
+                path = binaries / name
+                path.write_text(stub)
+                path.chmod(0o755)
+            env = {**os.environ, "PATH": str(binaries) + os.pathsep + os.environ["PATH"],
+                   "RUNNER_TEMP": str(root), "GITHUB_STEP_SUMMARY": str(root / "summary.txt"),
+                   "VALIDATION_FLAVOR": "Release-TestFlight", "VALIDATION_SCOPE": scope,
+                   "COMMAND_LOG": str(log), "FAIL_QUICK": str(fail_quick).lower()}
+            result = subprocess.run(["/bin/bash", "-c", shell], cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
+            commands = [json.loads(line) for line in log.read_text().splitlines()]
+            return result, commands
+
+    def test_quick_scope_never_starts_the_full_suite(self):
+        result, commands = self.scenario("quick")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        builds = [args for name, args in commands if name == "xcodebuild"]
+        self.assertEqual(len(builds), 1)
+        self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick", builds[0])
+        self.assertIn("480", builds[0])
+        imports = [args for name, args in commands if name == "xcrun" and args[:2] == ["simctl", "addmedia"]]
+        self.assertEqual(len(imports), 1)
+        self.assertEqual(len([p for p in imports[0][3:] if p.endswith(".png")]), 10,
+                         "The ninth-decision reproduction must not depend on bundled Photos samples")
+
+    def test_a_quick_failure_blocks_full_and_still_shuts_down_simulator(self):
+        result, commands = self.scenario("full", fail_quick=True)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(len([args for name, args in commands if name == "xcodebuild"]), 1)
+        self.assertTrue(any(name == "xcrun" and args[:2] == ["simctl", "shutdown"] for name, args in commands))
+
+    def test_full_reuses_products_but_creates_a_fresh_simulator_after_quick(self):
+        result, commands = self.scenario("full")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        builds = [args for name, args in commands if name == "xcodebuild"]
+        self.assertEqual(len(builds), 2)
+        self.assertIn("test-without-building", builds[1])
+        self.assertIn("-skip-testing:ChaiPhotoUITests/LocalizationFlowTests/testNavigationQuick", builds[1])
+        self.assertIn("900", builds[1])
+        destinations = [args[args.index("-destination") + 1] for args in builds]
+        self.assertNotEqual(destinations[0], destinations[1])
 
 
 class AdditionalVisualEvidenceTests(unittest.TestCase):
@@ -144,6 +232,10 @@ class AdditionalVisualEvidenceTests(unittest.TestCase):
         source = (ROOT / "TestsUI/LocalizationFlowTests.swift").read_text()
         self.assertEqual(set(plan["pages"]), set(re.findall(r'"(\d\d-[a-z-]+)"', source)))
         self.assertEqual(len(plan["pages"]), 39)
+        profiles = re.findall(r'func testMatrix\w+\(\) \{ runProfile\(code: "([^"]+)", theme: "([^"]+)", size: "([^"]+)"\)', source)
+        self.assertEqual(len(profiles), 12)
+        self.assertEqual(set(profiles), {(language, p["appearance"], p["textSize"])
+                                        for language in plan["languages"] for p in plan["profiles"]})
 
 
 if __name__ == "__main__":
