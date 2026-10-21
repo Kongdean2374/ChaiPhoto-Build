@@ -184,7 +184,7 @@ class TouchExtentPrecisionTests(unittest.TestCase):
 
 class ValidationStageTests(unittest.TestCase):
     """Execute the real Bash orchestration; stubs model tools, not App/UI results."""
-    def scenario(self, scope, fail_quick=False, profile="fr-dark-extra"):
+    def scenario(self, scope, fail_quick=False, profile="fr-dark-extra", segment=False):
         workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
         step = workflow.split("      - name: Run targeted navigation then requested acceptance suite\n", 1)[1]
         step = step.split("      - name:", 1)[0].split("        run: |\n", 1)[1]
@@ -218,7 +218,8 @@ elif name=='xcodebuild':
             env = {**os.environ, "PATH": str(binaries) + os.pathsep + os.environ["PATH"],
                    "RUNNER_TEMP": str(root), "GITHUB_STEP_SUMMARY": str(root / "summary.txt"),
                    "VALIDATION_FLAVOR": "Release-TestFlight", "VALIDATION_SCOPE": scope,
-                   "COMMAND_LOG": str(log), "FAIL_QUICK": str(fail_quick).lower(), "LAYOUT_PROFILE": profile}
+                   "COMMAND_LOG": str(log), "FAIL_QUICK": str(fail_quick).lower(), "LAYOUT_PROFILE": profile,
+                   "LAYOUT_SEGMENT": str(segment).lower()}
             result = subprocess.run(["/bin/bash", "-c", shell], cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
             commands = [json.loads(line) for line in log.read_text().splitlines()]
             return result, commands
@@ -277,6 +278,122 @@ elif name=='xcodebuild':
         self.assertEqual(len(layouts), 12)
         self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testManualLanguageChangePreservesPendingItemsAndCurrentPhoto", builds[0])
         self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testDiagnosticsPresentationQuick", builds[0])
+
+
+class SegmentedLayoutTests(unittest.TestCase):
+    """Execute workflow planner and Bash routing, not native App/UI validation."""
+    def plan(self, profiles, flavor="both", scope="layout_batch", sha=None):
+        workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
+        step = workflow.split("      - name: Validate and expand requested layout segments\n", 1)[1]
+        step = step.split("  validate:", 1)[0].split("        run: |\n", 1)[1]
+        shell = "\n".join(line[10:] for line in step.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "outputs"
+            env = {**os.environ, "GITHUB_OUTPUT": str(output), "GITHUB_SHA": "a" * 40,
+                   "EXPECTED_SHA": sha if sha is not None else "a" * 40,
+                   "VALIDATION_SCOPE": scope, "REQUESTED_PROFILES": json.dumps(profiles),
+                   "REQUESTED_FLAVOR": flavor}
+            result = subprocess.run(["/bin/bash", "-c", shell], env=env, text=True, capture_output=True)
+            matrix = json.loads(output.read_text().strip().removeprefix("matrix=")) if output.exists() else None
+            return result, matrix
+
+    def test_missing_eleven_profiles_expand_to_independent_jobs_without_french_dark(self):
+        plan = json.loads((ROOT / "build/visual-pages.json").read_text())
+        profiles = [f'{language}-{p["appearance"]}-{p["textSize"]}'
+                    for language in plan["languages"] for p in plan["profiles"]
+                    if f'{language}-{p["appearance"]}-{p["textSize"]}' != "fr-dark-extra"]
+        result, matrix = self.plan(profiles)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(matrix["include"]), 22)
+        self.assertEqual(sum(j["regressions"] for j in matrix["include"]), 1)
+        self.assertTrue(matrix["include"][0]["regressions"])
+        self.assertEqual({(j["flavor"], j["profile"]) for j in matrix["include"]},
+                         {(f, p) for f in ["Release-TestFlight", "Release-AppStore"] for p in profiles})
+
+    def test_only_one_failed_profile_and_flavor_can_be_retried(self):
+        result, matrix = self.plan(["es-dark-extra"], "Release-AppStore")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(matrix, {"include": [{"flavor": "Release-AppStore", "profile": "es-dark-extra", "regressions": True}]})
+
+    def test_invalid_empty_duplicate_or_injected_requests_fail_before_mac_jobs(self):
+        for profiles in [[], ["en-light-standard"] * 2, ["unknown"], [None], [1], {},
+                         ["$(touch /tmp/not-executed)"], ["en-light-standard"] * 13]:
+            with self.subTest(profiles=profiles):
+                result, matrix = self.plan(profiles)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIsNone(matrix)
+        for kwargs in [{"flavor": "unknown"}, {"sha": "b" * 40}, {"sha": "bad"}, {"scope": "unknown"}]:
+            result, matrix = self.plan(["en-light-standard"], **kwargs)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIsNone(matrix)
+
+    def test_old_scopes_keep_exactly_two_original_flavor_jobs(self):
+        for scope in ("quick", "layout", "focused", "full"):
+            result, matrix = self.plan([], scope=scope)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(matrix, {"include": [{"flavor": f, "profile": "selected", "regressions": True}
+                                                 for f in ["Release-TestFlight", "Release-AppStore"]]})
+
+    def test_segment_runs_only_selected_nine_page_ui_without_probes_or_full_matrix(self):
+        result, commands = ValidationStageTests().scenario("layout", profile="ja-dark-extra", segment=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        builds = [args for name, args in commands if name == "xcodebuild"]
+        self.assertEqual(len(builds), 1)
+        selected = [a for a in builds[0] if a.startswith("-only-testing:")]
+        self.assertEqual(selected, ["-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testLayout03jaDarkLarge"])
+        self.assertFalse(any("screenshot" in args for name, args in commands if name == "xcrun"))
+
+    def test_failed_segment_captures_current_synthetic_frame_then_shuts_down(self):
+        result, commands = ValidationStageTests().scenario("layout", fail_quick=True, segment=True)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        xcrun = [args for name, args in commands if name == "xcrun"]
+        shot = next(i for i, args in enumerate(xcrun) if args[:2] == ["simctl", "io"])
+        shutdown = next(i for i, args in enumerate(xcrun) if args[:2] == ["simctl", "shutdown"])
+        self.assertLess(shot, shutdown)
+        self.assertIn("visual-l128-segment-interrupted-fr-dark-extra.png", xcrun[shot][-1])
+
+    def test_interrupted_export_keeps_fallback_image_and_reports_failure(self):
+        workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
+        step = workflow.split("      - name: Export actual simulator screenshot attachments\n", 1)[1]
+        step = step.split("      - name:", 1)[0].split("        run: |\n", 1)[1]
+        shell = "\n".join(line[10:] for line in step.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            binaries = base / "bin"
+            binaries.mkdir()
+            # Simulated tool output for orchestration only, never visual acceptance.
+            (binaries / "xcrun").write_text(f"#!{sys.executable}\n" +
+                "import pathlib,sys\nassert sys.argv[1:5]==['simctl','io','synthetic-device','screenshot']\n" +
+                "pathlib.Path(sys.argv[-1]).write_bytes(bytes.fromhex('89504e470d0a1a0a'))\n")
+            (binaries / "python3").write_text("#!/bin/bash\nexit 1\n")
+            for binary in binaries.iterdir(): binary.chmod(0o755)
+            (base / "visual-device-id").write_text("synthetic-device\n")
+            (base / "test-Release-AppStore.xcresult").mkdir()
+            env = {**os.environ, "PATH": str(binaries) + os.pathsep + os.environ["PATH"],
+                   "RUNNER_TEMP": str(base), "VALIDATION_FLAVOR": "Release-AppStore",
+                   "VALIDATION_SCOPE": "layout", "LAYOUT_SEGMENT": "true",
+                   "LAYOUT_PROFILE": "fr-dark-extra", "TESTS_SUCCEEDED": "false"}
+            result = subprocess.run(["/bin/bash", "-c", shell], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            images = list((base / "visual-review/Release-AppStore").iterdir())
+            self.assertEqual([p.name for p in images], ["visual-l128-segment-interrupted-fr-dark-extra.png"])
+            self.assertEqual(images[0].read_bytes(), b"\x89PNG\r\n\x1a\n")
+
+    def test_each_segment_has_reserved_export_upload_time_and_distinct_artifact(self):
+        workflow = (ROOT / ".github/workflows/validate-snapshot.yml").read_text()
+        self.assertIn("inputs.validation_scope == 'layout_batch' && 18", workflow)
+        self.assertIn("inputs.validation_scope == 'layout_batch' && 40", workflow)
+        self.assertIn("fail-fast: false", workflow)
+        self.assertIn("max-parallel: 2", workflow)
+        self.assertIn("name: visual-review-${{ github.sha }}-${{ matrix.flavor }}-${{ matrix.profile }}", workflow)
+        export = workflow.split("      - name: Export actual simulator screenshot attachments\n", 1)[1].split("      - name:", 1)[0]
+        upload = workflow.split("      - name: Retain synthetic simulator screenshots only\n", 1)[1]
+        for step in (export, upload): self.assertIn("if: always()", step)
+        self.assertIn("timeout-minutes: 4", export)
+        self.assertIn("timeout-minutes: 3", upload)
+        self.assertIn("visual-device-id", export)
+        self.assertNotIn(".xcresult", upload)
+        self.assertNotIn("*.mp4", upload)
 
 
 class PhotosConsentSetupContractTests(unittest.TestCase):

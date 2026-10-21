@@ -8,54 +8,124 @@ on:
         required: true
         type: string
       validation_scope:
-        description: quick probes, layout one profile, focused impact acceptance, or full matrix
+        description: layout_batch for independent missing nine-page profiles; other scopes remain available
         required: true
         default: quick
         type: choice
-        options: [quick, layout, focused, full]
+        options: [quick, layout, layout_batch, focused, full]
       layout_profile:
         description: Used only by layout scope; real narrow-screen language/theme/text-size profile
         required: true
         default: fr-dark-extra
         type: choice
         options: [zh-Hant-light-standard, zh-Hant-dark-extra, zh-Hans-light-standard, zh-Hans-dark-extra, en-light-standard, en-dark-extra, ja-light-standard, ja-dark-extra, es-light-standard, es-dark-extra, fr-light-standard, fr-dark-extra]
+      layout_profiles:
+        description: 'layout_batch only: JSON array of missing profiles; never include already accepted profiles'
+        required: false
+        default: '[]'
+        type: string
+      layout_flavor:
+        description: layout_batch only; select the missing flavor or both
+        required: true
+        default: both
+        type: choice
+        options: [both, Release-TestFlight, Release-AppStore]
 permissions:
   contents: read
 concurrency:
   group: chaiphoto-snapshot-validation
   cancel-in-progress: false
 jobs:
+  plan:
+    name: Plan only requested validation gaps
+    if: github.repository == 'Kongdean2374/ChaiPhoto-Build' && github.event.repository.private == false && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Validate and expand requested layout segments
+        id: plan
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          VALIDATION_SCOPE: ${{ inputs.validation_scope }}
+          REQUESTED_PROFILES: ${{ inputs.layout_profiles }}
+          REQUESTED_FLAVOR: ${{ inputs.layout_flavor }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import json, os, re
+          scope = os.environ['VALIDATION_SCOPE']
+          sha = os.environ['EXPECTED_SHA']
+          if not re.fullmatch(r'[0-9a-f]{40}', sha) or sha != os.environ['GITHUB_SHA']:
+              raise SystemExit('Expected SHA must equal this exact dispatched main commit')
+          flavors = ['Release-TestFlight', 'Release-AppStore']
+          profiles = ['selected']
+          if scope == 'layout_batch':
+              profiles = json.loads(os.environ['REQUESTED_PROFILES'])
+              allowed = {f'{language}-{appearance}-{size}'
+                         for language in ('zh-Hant', 'zh-Hans', 'en', 'ja', 'es', 'fr')
+                         for appearance, size in (('light', 'standard'), ('dark', 'extra'))}
+              if (not isinstance(profiles, list) or not profiles or len(profiles) > 12
+                  or any(not isinstance(p, str) or p not in allowed for p in profiles)
+                  or len(set(profiles)) != len(profiles)):
+                  raise SystemExit('Select 1-12 unique supported missing layout profiles')
+              flavor = os.environ['REQUESTED_FLAVOR']
+              if flavor not in ['both'] + flavors:
+                  raise SystemExit('Unsupported layout flavor')
+              if flavor != 'both': flavors = [flavor]
+          elif scope not in ('quick', 'layout', 'focused', 'full'):
+              raise SystemExit('Unsupported validation scope')
+          entries = [{'flavor': f, 'profile': p} for p in profiles for f in flavors]
+          for index, entry in enumerate(entries):
+              entry['regressions'] = scope != 'layout_batch' or index == 0
+          matrix = {'include': entries}
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('matrix=' + json.dumps(matrix, separators=(',', ':')) + '\n')
+          PYTHON
   validate:
-    name: Validate ${{ matrix.flavor }}
+    needs: plan
+    name: Validate ${{ matrix.flavor }} / ${{ matrix.profile }}
     if: github.repository == 'Kongdean2374/ChaiPhoto-Build' && github.event.repository.private == false && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     strategy:
       fail-fast: false
       max-parallel: 2
-      matrix:
-        flavor: [Release-TestFlight, Release-AppStore]
-    timeout-minutes: ${{ inputs.validation_scope == 'full' && 120 || inputs.validation_scope == 'focused' && 65 || 25 }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    timeout-minutes: ${{ inputs.validation_scope == 'full' && 120 || inputs.validation_scope == 'focused' && 65 || inputs.validation_scope == 'layout_batch' && 40 || 25 }}
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       VALIDATION_FLAVOR: ${{ matrix.flavor }}
-      VALIDATION_SCOPE: ${{ inputs.validation_scope }}
-      LAYOUT_PROFILE: ${{ inputs.layout_profile }}
+      VALIDATION_SCOPE: ${{ inputs.validation_scope == 'layout_batch' && 'layout' || inputs.validation_scope }}
+      LAYOUT_PROFILE: ${{ inputs.validation_scope == 'layout_batch' && matrix.profile || inputs.layout_profile }}
+      LAYOUT_SEGMENT: ${{ inputs.validation_scope == 'layout_batch' && 'true' || 'false' }}
+      RUN_REGRESSIONS: ${{ matrix.regressions && 'true' || 'false' }}
     steps:
       - name: Checkout exact dispatched public source
+        timeout-minutes: 2
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
       - name: Verify reviewed source and offline delivery regressions
+        timeout-minutes: 3
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/verify_public_tree.py
-          python3 -m unittest discover -s tests -v
+          if test "${LAYOUT_SEGMENT:-false}" != true || test "$RUN_REGRESSIONS" = true; then
+            python3 -m unittest discover -s tests -v
+          else
+            echo 'Unchanged offline regressions run once in the first batch segment; source/SHA verification remains per segment'
+          fi
       - name: Install verified toolchain
+        timeout-minutes: 3
         run: bash scripts/install_toolchain.sh
       - name: Run executable policy regressions for both flavors
+        if: inputs.validation_scope != 'layout_batch' || matrix.regressions
+        timeout-minutes: 2
         shell: bash
         run: |
           set -euo pipefail
@@ -82,6 +152,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
           echo "iPhoneOS $config: PASS" >> "$GITHUB_STEP_SUMMARY"
       - name: Run targeted navigation then requested acceptance suite
+        id: acceptance
+        # Stop this segment well before the job limit, leaving time for export/upload.
+        timeout-minutes: ${{ inputs.validation_scope == 'layout_batch' && 18 || inputs.validation_scope == 'full' && 110 || inputs.validation_scope == 'focused' && 55 || 20 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -93,12 +166,22 @@ jobs:
           DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; print(next(d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == "iPhone SE (3rd generation)"))')
           config="$VALIDATION_FLAVOR"
           DEVICE_ID=''
+          segment_succeeded=false
           cleanup() {
-            if test -n "$DEVICE_ID"; then xcrun simctl shutdown "$DEVICE_ID" >/dev/null 2>&1 || true; fi
+            if test -n "$DEVICE_ID"; then
+              if test "${LAYOUT_SEGMENT:-false}" = true && test "$segment_succeeded" != true; then
+                mkdir -p "$RUNNER_TEMP/visual-review/$config"
+                # Fallback if an interrupted xcresult cannot export its attachments.
+                # This device contains only generated CI media, never user photos.
+                xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/visual-review/$config/visual-l128-segment-interrupted-$LAYOUT_PROFILE.png" || true
+              fi
+              xcrun simctl shutdown "$DEVICE_ID" >/dev/null 2>&1 || true
+            fi
           }
           trap cleanup EXIT
           boot_fixture() {
             DEVICE_ID=$(xcrun simctl create "ChaiPhoto $config $1" "$DEVICE_TYPE" "$RUNTIME_ID")
+            printf '%s\n' "$DEVICE_ID" > "$RUNNER_TEMP/visual-device-id"
             xcrun simctl boot "$DEVICE_ID"
             xcrun simctl bootstatus "$DEVICE_ID" -b
             xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP"/visual-fixtures/*.png "$RUNNER_TEMP"/visual-fixtures/*.mov
@@ -141,7 +224,10 @@ jobs:
             done
             if test -z "$selected"; then echo 'Unsupported layout profile'; exit 1; fi
             test_action=test
-            suite_args=(-only-testing:ChaiPhotoTests "-only-testing:ChaiPhotoUITests/LocalizationFlowTests/$selected")
+            suite_args=("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/$selected")
+            # Existing one-profile scope retains its unit regressions. Batch jobs
+            # cover UI gaps only; unchanged unit/manual/navigation evidence is reused.
+            if test "${LAYOUT_SEGMENT:-false}" != true; then suite_args+=(-only-testing:ChaiPhotoTests); fi
           elif test "$VALIDATION_SCOPE" = focused; then
             suite_args=(-only-testing:ChaiPhotoTests -only-testing:ChaiPhotoUITests/LaunchFlowTests -only-testing:ChaiPhotoUITests/LocalizationFlowTests/testMatrix05frDarkLarge)
             for method in "${layout_methods[@]}"; do suite_args+=("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/$method"); done
@@ -158,12 +244,14 @@ jobs:
             -test-timeouts-enabled YES -default-test-execution-time-allowance 900 \
             -maximum-test-execution-time-allowance 900 -parallel-testing-enabled NO ENABLE_TESTABILITY=YES \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' "$test_action"; then
-            echo "$VALIDATION_SCOPE acceptance $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+            segment_succeeded=true
+            echo "$VALIDATION_SCOPE acceptance $config / $LAYOUT_PROFILE: PASS" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "$VALIDATION_SCOPE acceptance $config: FAIL" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
       - name: Export actual simulator screenshot attachments
+        timeout-minutes: 4
         if: always()
         shell: bash
         env:
@@ -171,6 +259,15 @@ jobs:
         run: |
           set -euo pipefail
           status=0
+          if test "${LAYOUT_SEGMENT:-false}" = true && test "$TESTS_SUCCEEDED" != true; then
+            frame="$RUNNER_TEMP/visual-review/$VALIDATION_FLAVOR/visual-l128-segment-interrupted-$LAYOUT_PROFILE.png"
+            if test ! -f "$frame" && test -f "$RUNNER_TEMP/visual-device-id"; then
+              mkdir -p "$(dirname "$frame")"
+              device=$(cat "$RUNNER_TEMP/visual-device-id")
+              # Independent fallback when a step timeout prevented its EXIT trap.
+              xcrun simctl io "$device" screenshot "$frame" || echo 'Interrupted simulator frame unavailable; attempting xcresult export next'
+            fi
+          fi
           for config in "$VALIDATION_FLAVOR"; do
             quick_bundle="$RUNNER_TEMP/quick-$config.xcresult"
             if test -d "$quick_bundle"; then
@@ -200,10 +297,11 @@ jobs:
           done
           exit "$status"
       - name: Retain synthetic simulator screenshots only
+        timeout-minutes: 3
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: visual-review-${{ github.sha }}-${{ matrix.flavor }}
+          name: visual-review-${{ github.sha }}-${{ matrix.flavor }}-${{ matrix.profile }}
           path: |
             ${{ runner.temp }}/visual-review/Release-TestFlight/*.png
             ${{ runner.temp }}/visual-review/Release-TestFlight/*.jpg
