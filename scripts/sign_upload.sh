@@ -99,8 +99,15 @@ case "$RELEASE_FLAVOR" in
   appstore) CONFIG="Release-AppStore";;
   *) exit 1;;
 esac
+ARCHIVE_PROJECT="ChaiPhoto.xcodeproj"
+if [ "$RELEASE_FLAVOR" = appstore ]; then
+  STAGE="App Store archive resource preparation"
+  python3 scripts/prepare_release_resources.py --root "$PWD" \
+    --destination "$SIGN_DIR/archive-inputs" --flavor appstore
+  ARCHIVE_PROJECT="$SIGN_DIR/archive-inputs/ChaiPhoto.xcodeproj"
+fi
 STAGE="signed device archive"
-if xcodebuild -project ChaiPhoto.xcodeproj -scheme ChaiPhoto -configuration "$CONFIG" \
+if xcodebuild -project "$ARCHIVE_PROJECT" -scheme ChaiPhoto -configuration "$CONFIG" \
   -destination 'generic/platform=iOS' -archivePath "$SIGN_DIR/ChaiPhoto.xcarchive" \
   DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \

@@ -72,6 +72,7 @@
     "scripts/install_toolchain.sh",
     "scripts/make_visual_fixtures.py",
     "scripts/make_visual_video.swift",
+    "scripts/prepare_release_resources.py",
     "scripts/release_preflight.py",
     "scripts/resolve_version.py",
     "scripts/sign_upload.sh",
