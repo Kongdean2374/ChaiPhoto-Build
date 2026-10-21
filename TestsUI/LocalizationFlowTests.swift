@@ -96,18 +96,32 @@ final class LocalizationFlowTests: XCTestCase {
             // fallback to the real alert's exact translated Cancel action.
             target = app.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["取消", "キャンセル", "Cancel", "Cancelar", "Annuler"])).firstMatch
         }
-        XCTAssertTrue(target.waitForExistence(timeout: 8), id)
         if scroll {
-            for _ in 0..<8 { if target.isHittable { break }; scrollPage(app) }
+            // Form/List may not create an off-screen row until it is scrolled
+            // into view. Requiring existence first prevents the scroll itself.
+            for _ in 0..<8 {
+                if target.exists && target.isHittable { break }
+                scrollPage(app)
+            }
         }
-        XCTAssertTrue(target.isHittable, "Must remain reachable at the real screen size: " + id)
+        XCTAssertTrue(target.waitForExistence(timeout: 8), id)
+        waitUntilHittable(target, "Must remain reachable at the real screen size: " + id)
         target.tap()
+    }
+
+    private func waitUntilHittable(_ target: XCUIElement, _ message: String) {
+        // A dismissed sheet may still be finishing its transition when XCTest
+        // becomes idle. Wait for real reachability, never tap through a modal.
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            target.exists && target.isHittable
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, message)
     }
 
     private func tab(_ app: XCUIApplication, _ index: Int) {
         XCTAssertEqual(app.tabBars.buttons.count, 3)
         let target = app.tabBars.buttons.element(boundBy: index)
-        XCTAssertTrue(target.isHittable)
+        waitUntilHittable(target, "Tab \(index) must be reachable after the preceding sheet closes")
         target.tap()
     }
 

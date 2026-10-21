@@ -13,11 +13,18 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    name: Validate ${{ matrix.flavor }}
     if: github.repository == 'Kongdean2374/ChaiPhoto-Build' && github.event.repository.private == false && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: macos-26
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        flavor: [Release-TestFlight, Release-AppStore]
     timeout-minutes: 120
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
+      VALIDATION_FLAVOR: ${{ matrix.flavor }}
     steps:
       - name: Checkout exact dispatched public source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,20 +53,19 @@ jobs:
           for localization in ChaiPhoto/Localization/*.lproj; do
             plutil -lint "$localization/Localizable.strings" "$localization/Localizable.stringsdict" "$localization/InfoPlist.strings"
           done
-      - name: Compile both unsigned iPhoneOS flavors
+      - name: Compile assigned unsigned iPhoneOS flavor
         shell: bash
         run: |
           set -euo pipefail
           xcodegen generate
           python3 scripts/verify_public_tree.py --project
-          for config in Release-TestFlight Release-AppStore; do
-            xcodebuild -quiet -project ChaiPhoto.xcodeproj -scheme ChaiPhoto \
-              -configuration "$config" -sdk iphoneos -destination 'generic/platform=iOS' \
-              -derivedDataPath "$RUNNER_TEMP/device-$config" \
-              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
-            echo "iPhoneOS $config: PASS" >> "$GITHUB_STEP_SUMMARY"
-          done
-      - name: Run XCTest and lifecycle UI tests for both flavors
+          config="$VALIDATION_FLAVOR"
+          xcodebuild -quiet -project ChaiPhoto.xcodeproj -scheme ChaiPhoto \
+            -configuration "$config" -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/device-$config" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+          echo "iPhoneOS $config: PASS" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run XCTest and lifecycle UI tests for assigned flavor
         shell: bash
         run: |
           set -euo pipefail
@@ -69,7 +75,7 @@ jobs:
           swift scripts/make_visual_video.swift "$RUNNER_TEMP/visual-fixtures/visual-video.mov"
           status=0
           DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; print(next(d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == "iPhone SE (3rd generation)"))')
-          for config in Release-TestFlight Release-AppStore; do
+          for config in "$VALIDATION_FLAVOR"; do
             # Each flavor gets its own Photos permission and onboarding state.
             DEVICE_ID=$(xcrun simctl create "ChaiPhoto Visual Review $config" "$DEVICE_TYPE" "$RUNTIME_ID")
             xcrun simctl boot "$DEVICE_ID"
@@ -97,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          for config in Release-TestFlight Release-AppStore; do
+          for config in "$VALIDATION_FLAVOR"; do
             bundle="$RUNNER_TEMP/test-$config.xcresult"
             if test -d "$bundle"; then
               if test "$TESTS_SUCCEEDED" = true; then
@@ -114,7 +120,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: visual-review-${{ github.sha }}
+          name: visual-review-${{ github.sha }}-${{ matrix.flavor }}
           path: |
             ${{ runner.temp }}/visual-review/Release-TestFlight/*.png
             ${{ runner.temp }}/visual-review/Release-TestFlight/*.jpg

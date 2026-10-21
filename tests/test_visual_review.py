@@ -38,12 +38,19 @@ class VisualEvidenceTests(unittest.TestCase):
                    "STUB_LOG": str(log), "FAIL_FIRST": str(fail_first).lower()}
             # /bin/bash is Bash 3.2 on the macOS runner. Exercise the failure branch,
             # which previously aborted on an empty array under nounset.
-            result = subprocess.run(["/bin/bash", "-c", shell], env=env, capture_output=True, text=True)
+            # The workflow assigns each flavor its own runner. Execute the real
+            # shell for each independent job, even if the first one fails.
+            results = []
+            for flavor in ("Release-TestFlight", "Release-AppStore"):
+                results.append(subprocess.run(["/bin/bash", "-c", shell],
+                                              env={**env, "VALIDATION_FLAVOR": flavor},
+                                              capture_output=True, text=True))
             calls = [json.loads(line) for line in log.read_text().splitlines()]
-            self.assertEqual(len(calls), 2, result.stderr)
+            self.assertEqual(len(calls), 2, "\n".join(r.stderr for r in results))
             self.assertIn("Release-TestFlight", calls[0][1])
             self.assertIn("Release-AppStore", calls[1][1])
-            self.assertEqual(result.returncode, int(fail_first), result.stderr)
+            self.assertEqual([r.returncode for r in results], [int(fail_first), 0],
+                             "\n".join(r.stderr for r in results))
             for call in calls:
                 self.assertEqual(call[3:], ["--require-complete"] if succeeded else [])
 
