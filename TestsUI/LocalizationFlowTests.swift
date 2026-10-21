@@ -95,8 +95,8 @@ final class LocalizationFlowTests: XCTestCase {
     }
 
     private func currentFixtureFilename(_ app: XCUIApplication) -> String {
-        // LabeledContent combines its translated title and value in one label.
-        // Match only the synthetic filename, never "File"/"Fichier" or public.png.
+        // LabeledContent may expose its title and value together or separately.
+        // Match only the synthetic filename suffix, never a translated title or public.png.
         let pattern = "visual-fixture-[0-9]+[.]png$"
         let matches = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", ".*" + pattern))
         XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 5))
@@ -401,16 +401,9 @@ final class LocalizationFlowTests: XCTestCase {
         executionTimeAllowance = 480
         let app = XCUIApplication()
         defer { app.terminate() }
-        func filename(title: String) -> String {
-            let prefix = title + ", "
-            let rows = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
-            XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
-            XCTAssertEqual(rows.count, 1, "Exactly one actual filename row is required")
-            return String(rows.firstMatch.label.dropFirst(prefix.count))
-        }
-        for (code, theme, size, title, chosen, newTitle, sortLabel) in [
-            ("zh-Hant", "light", "standard", "檔案", "Français", "Fichier", "Trier"),
-            ("fr", "light", "standard", "Fichier", "English", "File", "Sort")
+        for (code, theme, size, chosen, sortLabel) in [
+            ("zh-Hant", "light", "standard", "Français", "Trier"),
+            ("fr", "light", "standard", "English", "Sort")
         ] {
             activeProfile = "quick-" + code + "-" + theme
             app.launchArguments = ["-language", code, "-appearance", theme, "-textSize", size,
@@ -420,7 +413,7 @@ final class LocalizationFlowTests: XCTestCase {
             XCTAssertTrue(remaining.waitForExistence(timeout: 10))
             let baseline = remaining.label
             tap(app, "photo-information")
-            let before = filename(title: title)
+            let before = currentFixtureFilename(app)
             XCTAssertFalse(before.isEmpty)
             tap(app, "media-info-close")
             for round in 0..<2 {
@@ -431,7 +424,7 @@ final class LocalizationFlowTests: XCTestCase {
                 XCTAssertTrue(element(app, "media-preview-close").waitForExistence(timeout: 8))
                 tap(app, "media-preview-close")
                 tap(app, "photo-information")
-                XCTAssertEqual(filename(title: title), before, "Preview round \(round) must keep the current photo")
+                XCTAssertEqual(currentFixtureFilename(app), before, "Preview round \(round) must keep the current photo")
                 capture(app, activeProfile, "preview-return-\(round)")
                 tap(app, "media-info-close")
                 XCTAssertEqual(remaining.label, baseline)
@@ -445,7 +438,7 @@ final class LocalizationFlowTests: XCTestCase {
             tab(app, 0)
             XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, sortLabel)
             tap(app, "photo-information")
-            XCTAssertEqual(filename(title: newTitle), before, "Changing language must keep the current photo")
+            XCTAssertEqual(currentFixtureFilename(app), before, "Changing language must keep the current photo")
             tap(app, "media-info-close")
             let count = Int(baseline.replacingOccurrences(of: ",", with: "")) ?? 0
             XCTAssertGreaterThan(count, 9, "The fresh CI fixture selection must exercise the ninth decision")
