@@ -10,30 +10,60 @@ final class LocalizationFlowTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         let allow = NSPredicate(format: "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完整存取' OR label CONTAINS '所有照片'")
+        let photosTitle = NSPredicate(format: "label CONTAINS[c] 'Photo Library' OR label CONTAINS[c] 'Access Your Photos' OR label CONTAINS '照片'")
+        var consentTapped = false
         func grant(_ alert: XCUIElement) -> Bool {
-            let button = alert.buttons.matching(allow).firstMatch
-            guard button.exists else { XCTFail("Unknown Photos consent buttons: \(alert.buttons.allElementsBoundByIndex.map(\.label))"); return false }
-            button.tap(); return true
+            // A full-access button alone is not proof of a Photos dialog.
+            guard alert.exists else { return false }
+            let titleMatches = photosTitle.evaluate(with: alert)
+                || alert.staticTexts.matching(photosTitle).firstMatch.exists
+            let identifiesApp = alert.label.contains("ChaiPhoto")
+                || alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'ChaiPhoto'")).firstMatch.exists
+            let buttons = alert.buttons.matching(allow)
+            guard titleMatches && identifiesApp && buttons.count == 1 else { return false }
+            if consentTapped { return true } // Await authorization; never tap repeatedly.
+            let button = buttons.firstMatch
+            guard button.isHittable else { return false }
+            consentTapped = true
+            let consent = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            consent.name = "visual-l128-setup-photos-consent"
+            consent.lifetime = .keepAlways
+            add(consent)
+            button.tap()
+            return true
         }
         photosMonitor = addUIInterruptionMonitor(withDescription: "Synthetic media: real full Photos consent") { alert in
-            guard alert.label.lowercased().contains("photo") || alert.label.contains("照片") else { return false }
-            return grant(alert)
+            grant(alert)
         }
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         if springboard.alerts.firstMatch.waitForExistence(timeout: 2) {
-            XCTAssertTrue(grant(springboard.alerts.firstMatch))
+            _ = grant(springboard.alerts.firstMatch)
         }
         let app = XCUIApplication()
         app.launchArguments = ["-language", "en", "-onboarding.v2.page", "0", "-preload.mode.v3", "off", "-autoplay", "NO"]
         app.launch()
-        if app.buttons["photo-access-button"].waitForExistence(timeout: 2) {
-            app.buttons["photo-access-button"].tap()
-            if springboard.alerts.firstMatch.waitForExistence(timeout: 3) { XCTAssertTrue(grant(springboard.alerts.firstMatch)) }
-            else if app.alerts.firstMatch.exists { XCTAssertTrue(grant(app.alerts.firstMatch)) }
-        }
-        if element(app, "guide-next").exists {
-            XCTAssertTrue(element(app, "photo-access-full").waitForExistence(timeout: 10))
+        let requestedAccess = app.buttons["photo-access-button"].waitForExistence(timeout: 2)
+        if requestedAccess { app.buttons["photo-access-button"].tap() }
+        if requestedAccess || element(app, "guide-next").exists {
+            activeStep = "photos-consent"
+            // One monotonic deadline, not an alert wait followed by a blind marker wait.
+            // The system sheet can arrive after the former three-second alert window.
+            let deadline = ProcessInfo.processInfo.systemUptime + 20
+            let fullAccess = element(app, "photo-access-full")
+            while ProcessInfo.processInfo.systemUptime < deadline {
+                _ = grant(springboard.alerts.firstMatch)
+                _ = grant(app.alerts.firstMatch)
+                if fullAccess.exists { break }
+                let remaining = deadline - ProcessInfo.processInfo.systemUptime
+                if remaining > 0 { _ = fullAccess.waitForExistence(timeout: min(0.5, remaining)) }
+            }
+            XCTAssertTrue(fullAccess.exists, "Real full Photos authorization was not reached before the consent deadline")
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = "visual-l128-setup-full-access"
+            attachment.lifetime = .keepAlways
+            add(attachment)
             for _ in 0..<3 { if element(app, "guide-next").exists { tap(app, "guide-next") } }
+            XCTAssertFalse(element(app, "guide-next").exists, "Photos guide must finish before testing media")
         }
         // Separate profile tests may follow a failed profile with pending marks.
         // Restore only this isolated simulator's marks through the real Review UI.

@@ -279,6 +279,44 @@ elif name=='xcodebuild':
         self.assertIn("-only-testing:ChaiPhotoUITests/LocalizationFlowTests/testDiagnosticsPresentationQuick", builds[0])
 
 
+class PhotosConsentSetupContractTests(unittest.TestCase):
+    """Offline source contracts, not a replacement for native delayed-sheet UI validation."""
+    def setUp(self):
+        self.source = (ROOT / "TestsUI/LocalizationFlowTests.swift").read_text()
+        self.setup = self.source.split("override func setUpWithError() throws {", 1)[1].split("override func tearDownWithError", 1)[0]
+
+    def test_delayed_sheet_is_polled_inside_same_bounded_marker_wait(self):
+        loop = self.setup.split("while ProcessInfo.processInfo.systemUptime < deadline {", 1)[1].split("XCTAssertTrue(fullAccess.exists", 1)[0]
+        self.assertIn("let deadline = ProcessInfo.processInfo.systemUptime + 20", self.setup)
+        self.assertLess(loop.index("grant(springboard.alerts.firstMatch)"), loop.index("if fullAccess.exists"))
+        self.assertLess(loop.index("grant(app.alerts.firstMatch)"), loop.index("if fullAccess.exists"))
+        self.assertIn("deadline - ProcessInfo.processInfo.systemUptime", loop)
+        self.assertIn("timeout: min(0.5, remaining)", loop)
+        self.assertNotIn("timeout: 3", self.setup)
+        self.assertNotIn('"photo-access-full").waitForExistence(timeout: 10)', self.setup)
+
+    def test_only_identified_photos_dialog_with_unique_full_access_button_is_tapped_once(self):
+        grant = self.setup.split("func grant(_ alert: XCUIElement) -> Bool {", 1)[1].split("photosMonitor =", 1)[0]
+        self.assertIn("guard alert.exists else { return false }", grant)
+        self.assertIn("guard titleMatches && identifiesApp && buttons.count == 1 else { return false }", grant)
+        self.assertIn("guard button.isHittable else { return false }", grant)
+        self.assertLess(grant.index("if consentTapped { return true }"), grant.index("button.tap()"))
+        self.assertLess(grant.index("consentTapped = true"), grant.index("button.tap()"))
+        self.assertEqual(grant.count(".tap()"), 1)
+        self.assertIn("Photo Library", self.setup)
+        self.assertIn("ChaiPhoto", grant)
+        # No fallback first-button / generic alert acknowledgement.
+        self.assertNotIn("alert.buttons.firstMatch.tap()", self.setup)
+
+    def test_real_authorization_guide_and_media_postconditions_and_screenshot_remain(self):
+        self.assertIn('let fullAccess = element(app, "photo-access-full")', self.setup)
+        self.assertIn("XCTAssertTrue(fullAccess.exists", self.setup)
+        self.assertIn('XCTAssertFalse(element(app, "guide-next").exists', self.setup)
+        self.assertIn('app.buttons["photo-mark-delete"].waitForExistence(timeout: 12)', self.setup)
+        self.assertIn('attachment.name = "visual-l128-setup-full-access"', self.setup)
+        self.assertIn("attachment.lifetime = .keepAlways", self.setup)
+
+
 class AdditionalVisualEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
